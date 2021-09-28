@@ -1,0 +1,8 @@
+/*
+!/.gitignore
+!/ppo.py
+!/Referee.py
+!/screen.py
+!/test.py
+!/train.py
+__pycache__/
