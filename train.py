@@ -70,8 +70,9 @@ def PPO(args):
             self.device = device
         def forward(self, s, state=None, info={}):
             mask = torch.as_tensor(s.mask, device=self.device, dtype=torch.int32)
-            probs = nn.Softmax(dim=1)(self.model(self.net(s))) * mask
-            return probs, state
+            output = self.model(self.net(s))
+            logits = output + (output.min() - output.max() - 20) * (1 - mask)
+            return logits - logits.max(1).values.unsqueeze(1).repeat(1, logits.size(1)), state
 
     net = Net(REnv.state_shape, REnv.extra_shape, REnv.action_shape, device).to(device)
     critic = Critic(net, REnv.state_shape, REnv.extra_shape, REnv.action_shape, device).to(device)
@@ -89,7 +90,7 @@ def PPO(args):
         actor,
         critic,
         optim,
-        dist,
+        lambda x:dist(logits=x),
         discount_factor=args.gamma,
         max_grad_norm=0.5,
         vf_coef=args.vf_coef,
@@ -101,20 +102,20 @@ def PPO(args):
     if args.mode == 'eval':
         policy.load_state_dict(torch.load(f'./{args.log_dir}/{args.exp_name}/policy.pth' if args.load_path == '' else args.load_path, map_location=device))
         return '', policy
-    buffer = VectorReplayBuffer(1000000, 8)
+    buffer = VectorReplayBuffer(20000, 8)
     train_collector = Collector(policy, train_envs, buffer)
     test_collector = Collector(policy, test_envs)
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')
     logger = TensorboardLogger(writer)
+    with open(f'./{args.log_dir}/{args.exp_name}/args.txt', 'w') as f:
+        f.write(str(args))
     result = onpolicy_trainer(
         policy, train_collector, test_collector,
-        max_epoch=100, step_per_epoch=40000, repeat_per_collect=10, episode_per_collect=40,
-        episode_per_test=50, batch_size=256,
+        max_epoch=100, step_per_epoch=10000, repeat_per_collect=10, episode_per_collect=10,
+        episode_per_test=20, batch_size=256,
         stop_fn=lambda mean_rewards: False,
         save_fn=lambda policy: torch.save(policy.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
         logger=logger)
-    with open(f'./{args.log_dir}/{args.exp_name}/args.txt', 'w') as f:
-        f.write(str(args))
     return result, policy
 
 
@@ -135,12 +136,14 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    default_hsize = 128
+    default_lr = 5e-5 * default_hsize / 128
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'eval'])
     parser.add_argument('--exp-name', type=str, required=True)
-    parser.add_argument('--lr', type=float, default=5e-5)
-    parser.add_argument('--cuda', type=int, default=3)
+    parser.add_argument('--lr', type=float, default=default_lr)
+    parser.add_argument('--cuda', type=int, default=2)
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--hsize', type=int, default=256)
+    parser.add_argument('--hsize', type=int, default=default_hsize)
     parser.add_argument('--load-path', type=str, default='')
     parser.add_argument('--log-dir', type=str, default='log')
     parser.add_argument('--vf-coef', type=float, default=0.5)

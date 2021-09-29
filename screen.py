@@ -5,15 +5,15 @@ expect_str = '*\\$ '
 env_command = 'source activate ./venv'
 python_script = 'python train.py'
 arg_lists = {
-    # 'lr': ['3e-5', '4e-5', '5e-5'],
-    # 'hsize': [128, 256, 512],
+    'lr': ['2.5e-5', '5e-5', '1e-4'],
+    'hsize': [128, 256, 512],
     # 'vf-coef': [0.25, 0.5, 1.0, 2.0, 4.0],
     # 'ent-coef': ['1e-2', '1e-3'],
-    'gamma': [0.995, 1.],
-    'gae-lambda': [0.9, 0.95],
+    # 'gamma': [0.95, 0.99, 0.995, 1.],
+    # 'gae-lambda': [0.9, 0.95],
 }
 arg_fixed = {
-    'log-dir': '0928',
+    'log-dir': '0929',
 }
 args_collections = []
 

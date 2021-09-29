@@ -141,7 +141,8 @@ class PPOPolicy(A2CPolicy):
                 if self._grad_norm:  # clip large gradient
                     nn.utils.clip_grad_norm_(
                         set(self.actor.parameters()).union(self.critic.parameters()),
-                        max_norm=self._grad_norm
+                        max_norm=self._grad_norm,
+                        error_if_nonfinite=True
                     )
                 self.optim.step()
                 clip_losses.append(clip_loss.item())
