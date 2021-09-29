@@ -1,7 +1,7 @@
 import os
+import argparse
 
 screen_name = 'csm'
-expect_str = '*\\$ '
 env_command = 'source activate ./venv'
 python_script = 'python train.py'
 arg_lists = {
@@ -15,40 +15,66 @@ arg_lists = {
 arg_fixed = {
     'log-dir': '0929',
 }
-args_collections = []
 
-def combine_args(c, arg, exp_name, ks, vs, idx):
-    if idx == len(ks):
-        c.append(arg + ' --exp-name ' + exp_name)
-        return
-    for v in vs[idx]:
-        combine_args(c, arg + ' --' + ks[idx] + ' ' + str(v), exp_name + '.' + str(v), ks, vs, idx + 1)
 
-combine_args(args_collections, python_script + ''.join([' --' + k + ' ' + str(v) for k, v in arg_fixed.items()]), 'exp', list(arg_lists.keys()), list(arg_lists.values()), 0)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('mode', type=str, choices=['boot', 'shutdown'])
+    args = parser.parse_args()
+    if args.mode == 'boot':
+        presence = int(eval(os.popen('screen -ls 2> /dev/null | grep csm | wc -l').read()))
+        if presence:
+            raise RuntimeError("ALREADY PRESENT")
 
-with open('screen.txt', 'w') as f:
-    f.write('\n'.join(args_collections))
+        
+        prompt = '*\\$ '
+        args_collections = []
+        def combine_args(c, arg, exp_name, ks, vs, idx):
+            if idx == len(ks):
+                c.append(arg + ' --exp-name ' + exp_name)
+                return
+            for v in vs[idx]:
+                combine_args(c, arg + ' --' + ks[idx] + ' ' + str(v), exp_name + '.' + str(v), ks, vs, idx + 1)
 
-assigned_commands = []
-for i in range(10):
-    if args_collections == []:
-        break
-    if len(assigned_commands) <= i:
-        assigned_commands.append([])
-    assigned_commands[i].append(args_collections.pop(0))
+        combine_args(args_collections, python_script + ''.join([' --' + k + ' ' + str(v) for k, v in arg_fixed.items()]), 'exp', list(arg_lists.keys()), list(arg_lists.values()), 0)
 
-cmd = '\n'.join([
-    'expect <<EOF',
-    'set timeout 3',
-    f'spawn screen -S {screen_name}',
-] + sum([[
-    f'expect "{expect_str}"',
-    f'send "{env_command}\\n"',
-    f'expect "{expect_str}"',
-    'send "{}\\n"'.format('; '.join(assigned_command)),
-    f'expect "{expect_str}"',
-    'send "\\01"',
-    'send "c"'
-] for assigned_command in assigned_commands], [])[:-2] + [f'expect "{expect_str}"', 'send "\\01"', 'send "d"', f'expect "{expect_str}"', 'EOF', ''])
+        with open('screen.txt', 'w') as f:
+            f.write('\n'.join(args_collections))
 
-os.system(cmd)
+        assigned_commands = []
+        for i in range(10):
+            if args_collections == []:
+                break
+            if len(assigned_commands) <= i:
+                assigned_commands.append([])
+            assigned_commands[i].append(args_collections.pop(0))
+
+        cmd = '\n'.join([
+            'expect <<EOF',
+            'set timeout 3',
+            f'spawn screen -S {screen_name}',
+        ] + sum([[
+            f'expect "{prompt}"',
+            f'send "{env_command}\\n"',
+            f'expect "{prompt}"',
+            'send "{}\\n"'.format('; '.join(assigned_command)),
+            f'expect "{prompt}"',
+            'send "\\01"',
+            'send "c"'
+        ] for assigned_command in assigned_commands], [])[:-2] + [f'expect "{prompt}"', 'send "\\01"', 'send "d"', f'expect "{prompt}"', 'EOF', ''])
+        
+        os.system(cmd)
+    else:
+        cmd = '\n'.join([
+            'expect <<EOF',
+            'set timeout 3',
+            f'spawn screen -r {screen_name}',
+            'send "\\01"',
+            'send ":"',
+            'expect eof',
+            'send "quit"',
+            'EOF',
+            ''
+        ])
+        
+        os.system(cmd)

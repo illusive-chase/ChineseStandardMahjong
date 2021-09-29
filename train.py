@@ -111,8 +111,8 @@ def PPO(args):
         f.write(str(args))
     result = onpolicy_trainer(
         policy, train_collector, test_collector,
-        max_epoch=100, step_per_epoch=10000, repeat_per_collect=10, episode_per_collect=10,
-        episode_per_test=20, batch_size=256,
+        max_epoch=100, step_per_epoch=40000, repeat_per_collect=10, episode_per_collect=40,
+        episode_per_test=50, batch_size=256,
         stop_fn=lambda mean_rewards: False,
         save_fn=lambda policy: torch.save(policy.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
         logger=logger)
