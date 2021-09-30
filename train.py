@@ -1,4 +1,5 @@
 from Referee import Referee as REnv
+from test import Net, Actor
 from tianshou.data import Collector, VectorReplayBuffer, PrioritizedVectorReplayBuffer
 from tianshou.policy import DQNPolicy, RandomPolicy
 from ppo import PPOPolicy
@@ -22,57 +23,17 @@ def PPO(args):
     device = torch.device(f'cuda:{args.cuda}')
     train_envs = DummyVectorEnv([lambda:REnv(fixPolicy=RandomPolicy(), verbose=False)] * 8)
     test_envs = DummyVectorEnv([lambda:REnv(fixPolicy=RandomPolicy(), verbose=False, eval=True)] * 5)
-    class Net(nn.Module):
-        def __init__(self, state_shape, extra_shape, action_shape, device):
-            super().__init__()
-            self.embedding1 = nn.Embedding(22, 8)
-            self.embedding2 = nn.Embedding(4, 8)
-            self.embedding3 = nn.Embedding(8, 8)
-            self.linear = nn.Sequential(*[
-                nn.Linear(np.prod(state_shape[1:]), args.hsize), nn.ReLU(inplace=True),
-            ])
-            self.model = nn.Sequential(*[
-                nn.Linear(args.hsize+8*4, args.hsize), nn.ReLU(inplace=True)
-            ])
-            self.device = device
-        def forward(self, s, **kwargs):
-            obs = torch.as_tensor(s.obs.obs, device=self.device, dtype=torch.float32)
-            extra = torch.as_tensor(s.obs.extra, device=self.device, dtype=torch.int32)
-            batch = obs.shape[0]
-            state = self.linear(obs.view(batch, -1))
-            return self.model(torch.cat((
-                state,
-                self.embedding1(extra[:, 0]),
-                self.embedding2(extra[:, 1]),
-                self.embedding2(extra[:, 2]),
-                self.embedding3(extra[:, 3])
-            ), dim=1))
 
     class Critic(nn.Module):
         def __init__(self, net, state_shape, extra_shape, action_shape, device):
             super().__init__()
             self.net = net
             self.model = nn.Sequential(*[
-                nn.Linear(args.hsize, args.hsize), nn.ReLU(inplace=True),
-                nn.Linear(args.hsize, 1)
+                nn.Linear(256, 256), nn.ReLU(inplace=True),
+                nn.Linear(256, 1)
             ])
         def forward(self, s, **kwargs):
             return self.model(self.net(s))
-
-    class Actor(nn.Module):
-        def __init__(self, net, state_shape, extra_shape, action_shape, device):
-            super().__init__()
-            self.net = net
-            self.model = nn.Sequential(*[
-                nn.Linear(args.hsize, args.hsize), nn.ReLU(inplace=True),
-                nn.Linear(args.hsize, np.prod(action_shape[1:]), bias=False)
-            ])
-            self.device = device
-        def forward(self, s, state=None, info={}):
-            mask = torch.as_tensor(s.mask, device=self.device, dtype=torch.int32)
-            output = self.model(self.net(s))
-            logits = output + (output.min() - output.max() - 20) * (1 - mask)
-            return logits - logits.max(1).values.unsqueeze(1).repeat(1, logits.size(1)), state
 
     net = Net(REnv.state_shape, REnv.extra_shape, REnv.action_shape, device).to(device)
     critic = Critic(net, REnv.state_shape, REnv.extra_shape, REnv.action_shape, device).to(device)
@@ -136,14 +97,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    default_hsize = 128
-    default_lr = 5e-5 * default_hsize / 128
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'eval'])
     parser.add_argument('--exp-name', type=str, required=True)
-    parser.add_argument('--lr', type=float, default=default_lr)
+    parser.add_argument('--lr', type=float, default=1.2e-5)
     parser.add_argument('--cuda', type=int, default=2)
     parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--hsize', type=int, default=default_hsize)
+    # parser.add_argument('--hsize', type=int, default=512)
     parser.add_argument('--load-path', type=str, default='')
     parser.add_argument('--log-dir', type=str, default='log')
     parser.add_argument('--vf-coef', type=float, default=0.5)

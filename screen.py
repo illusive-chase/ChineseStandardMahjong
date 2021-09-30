@@ -5,8 +5,8 @@ screen_name = 'csm'
 env_command = 'source activate ./venv'
 python_script = 'python train.py'
 arg_lists = {
-    'lr': ['2.5e-5', '5e-5', '1e-4'],
-    'hsize': [128, 256, 512],
+    'lr': ['1e-5', '2.5e-5', '6.25e-5', '3.1e-4'],
+    # 'hsize': [128, 256, 512],
     # 'vf-coef': [0.25, 0.5, 1.0, 2.0, 4.0],
     # 'ent-coef': ['1e-2', '1e-3'],
     # 'gamma': [0.95, 0.99, 0.995, 1.],

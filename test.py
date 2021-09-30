@@ -17,7 +17,7 @@ END = PASS_MASK+1
 
 class VecData:
 
-    state_shape = (4, 14, 34)
+    state_shape = (4, 14, 36)
     extra_shape = (4, 4)
     action_shape = (4, END)
 
@@ -40,16 +40,16 @@ class VecData:
         self.mask[player, HU_MASK] = 1
 
     def check_able_play(self, player, tile):
-        # hand[0] : self.obs[player, 4, :]
-        # hand[3] : self.obs[player, 7, :]
+        # hand[0] : self.obs[player, 4, :34]
+        # hand[3] : self.obs[player, 7, :34]
         self.mask[player, PASS_MASK] = 0
         tile = self.str2tile[tile]
-        hand = self.obs[player, 4:8, :].sum(0)
+        hand = self.obs[player, 4:8, :34].sum(0)
         hand[tile] += 1
         self.mask[player][PLAY_MASK:CHI_MASK] = hand
         if self.link_players[(player + 1) % 4].pTileWall != [] and self.link_players[player % 4].pTileWall != []:
             self.mask[player, ANGANG_MASK:HU_MASK] = hand == 4
-            self.mask[player, BUGANG_MASK:ANGANG_MASK] = hand * self.obs[player, 12, :]
+            self.mask[player, BUGANG_MASK:ANGANG_MASK] = hand * self.obs[player, 12, :34]
 
     def check_able_ming(self, offer, tile):
         if self.link_players[(offer + 1) % 4].pTileWall == []:
@@ -57,7 +57,7 @@ class VecData:
         canCHI = tile[0] in 'WBT'
         num = int(tile[1])
         tile = self.str2tile[tile]
-        hand = self.obs[:, 4:8, :].sum(1)
+        hand = self.obs[:, 4:8, :34].sum(1)
 
         for p in range(4):
             if p == offer:
@@ -116,11 +116,11 @@ class VecData:
         shownFlatten = np.array(tuple(i for i in self.link_shown.values()), dtype=np.int32)
 
         for a in idxs:
-            shown = self.obs[a, 0:4, :]
-            hand = self.obs[a, 4:8, :]
-            chi_pack = self.obs[a, 8:12, :]
-            peng_pack = self.obs[a, 12, :]
-            gang_pack = self.obs[a, 13, :]
+            shown = self.obs[a, 0:4, :34]
+            hand = self.obs[a, 4:8, :34]
+            chi_pack = self.obs[a, 8:12, :34]
+            peng_pack = self.obs[a, 12, :34]
+            gang_pack = self.obs[a, 13, :34]
 
             handFlatten = np.zeros_like(shownFlatten)
             chiFlatten = np.zeros_like(shownFlatten)
@@ -182,6 +182,30 @@ class PlayerData:
         self.flower = flower
         self.pTileWall = pTileWall
 
+def MLP(channels, do_bn=False):
+    """ Multi-layer perceptron """
+    n = len(channels)
+    layers = []
+    for i in range(1, n):
+        layers.append(
+            nn.Conv1d(channels[i - 1], channels[i], kernel_size=1, bias=not do_bn))
+        if i < (n-1):
+            if do_bn:
+                layers.append(nn.BatchNorm1d(channels[i]))
+            layers.append(nn.ReLU(inplace=True))
+    return nn.Sequential(*layers)
+
+def Conv(channels, kernel_size, stride, padding, do_bn):
+    n = len(channels)
+    layers = []
+    for i in range(1, n):
+        layers.append(
+            nn.Conv2d(channels[i - 1], channels[i], kernel_size=kernel_size, stride=stride, padding=padding, bias=(not do_bn) or (i == n - 1)))
+        if i < n - 1:
+            if do_bn:
+                layers.append(nn.BatchNorm2d(channels[i]))
+            layers.append(nn.ReLU(inplace=True))
+    return nn.Sequential(*layers)
 
 class Net(nn.Module):
     def __init__(self, state_shape, extra_shape, action_shape, device):
@@ -189,25 +213,27 @@ class Net(nn.Module):
         self.embedding1 = nn.Embedding(22, 8)
         self.embedding2 = nn.Embedding(4, 8)
         self.embedding3 = nn.Embedding(8, 8)
-        self.linear = nn.Sequential(*[
-            nn.Linear(np.prod(state_shape[1:]), 256), nn.ReLU(inplace=True),
-        ])
-        self.model = nn.Sequential(*[
-            nn.Linear(256+8*4, 256), nn.ReLU(inplace=True)
-        ])
+        self.conv1 = Conv([14, 128], 3, 1, 1, True)
+        self.conv2 = Conv([128, 128, 128], 3, 1, 1, True)
+        self.conv3 = Conv([128, 128, 128], 3, 1, 1, True)
+        self.model = nn.Linear(128 * 4 * 9 + 8 * 4, 256)
+        self.state_shape = state_shape
+        self.extra_shape = extra_shape
+        self.action_shape = action_shape
         self.device = device
     def forward(self, s, **kwargs):
-        obs = torch.as_tensor(s['obs']['obs'], device=self.device, dtype=torch.float32)
+        obs = torch.as_tensor(s['obs']['obs'], device=self.device, dtype=torch.float32).view(-1, 14, 4, 9)
         extra = torch.as_tensor(s['obs']['extra'], device=self.device, dtype=torch.int32)
-        batch = obs.shape[0]
-        state = self.linear(obs.view(batch, -1))
-        return self.model(torch.cat((
-            state,
+        state = nn.ReLU(inplace=True)(self.conv1(obs))
+        state = nn.ReLU(inplace=True)(state + self.conv2(state))
+        state = nn.ReLU(inplace=True)(state + self.conv3(state))
+        return nn.ReLU(inplace=True)(self.model(torch.cat((
+            state.view(-1, 128 * 4 * 9),
             self.embedding1(extra[:, 0]),
             self.embedding2(extra[:, 1]),
             self.embedding2(extra[:, 2]),
             self.embedding3(extra[:, 3])
-        ), dim=1))
+        ), dim=1)))
 
 class Actor(nn.Module):
     def __init__(self, net, state_shape, extra_shape, action_shape, device):
@@ -220,8 +246,9 @@ class Actor(nn.Module):
         self.device = device
     def forward(self, s, state=None, info={}):
         mask = torch.as_tensor(s['mask'], device=self.device, dtype=torch.int32)
-        probs = nn.Softmax(dim=1)(self.model(self.net(s))) * mask
-        return probs, state
+        output = self.model(self.net(s))
+        logits = output + (output.min() - output.max() - 20) * (1 - mask)
+        return logits, state
 
 
 class Bot:
@@ -702,7 +729,7 @@ def main():
         dist = torch.distributions.Categorical
         with torch.no_grad():
             logits, _ = actor(obs, None)
-        action = torch.argmax(dist(logits).probs, dim=-1).item()
+        action = torch.argmax(dist(logits=logits).probs, dim=-1).item()
         action = bot.vec_data.realize(action)
     print(json.dumps({
         "response": action,
