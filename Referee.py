@@ -504,8 +504,6 @@ class Referee(gym.Env):
         except FinishError:
             rew = self.rew[0]
             rew = -2 if rew < 0 else (-1 if rew == 0 else (0.5 * self.rew[0]) ** 0.5)
-            st = self.shanten[0]
-            rew += 1 / (2 + st)
             return self.vec_data.get_obs()[0], rew, np.array(True), {}
         finally:
             pass

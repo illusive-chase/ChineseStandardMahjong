@@ -5,15 +5,17 @@ screen_name = 'csm'
 env_command = 'source activate ./venv'
 python_script = 'python train.py'
 arg_lists = {
-    'lr': ['1e-5', '2.5e-5', '6.25e-5', '3.1e-4'],
+    # 'lr': ['1.25e-6', '2.5e-6', '5e-6', '1e-5'],
     # 'hsize': [128, 256, 512],
-    # 'vf-coef': [0.25, 0.5, 1.0, 2.0, 4.0],
+    'vf-coef': [0.5, 1.5, 4.5],
     # 'ent-coef': ['1e-2', '1e-3'],
     # 'gamma': [0.95, 0.99, 0.995, 1.],
     # 'gae-lambda': [0.9, 0.95],
+    # 'seed': [1, 2],
 }
 arg_fixed = {
-    'log-dir': '0929',
+    'log-dir': '1003',
+    'max-epoch': 1000,
 }
 
 
@@ -34,7 +36,7 @@ if __name__ == "__main__":
                 c.append(arg + ' --exp-name ' + exp_name)
                 return
             for v in vs[idx]:
-                combine_args(c, arg + ' --' + ks[idx] + ' ' + str(v), exp_name + '.' + str(v), ks, vs, idx + 1)
+                combine_args(c, arg + ' --' + ks[idx] + ' ' + str(v), exp_name + '.' + ks[idx] + '.' + str(v), ks, vs, idx + 1)
 
         combine_args(args_collections, python_script + ''.join([' --' + k + ' ' + str(v) for k, v in arg_fixed.items()]), 'exp', list(arg_lists.keys()), list(arg_lists.values()), 0)
 

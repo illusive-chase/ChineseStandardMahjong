@@ -1,4 +1,4 @@
-from Referee import Referee as REnv
+from referee import Referee as REnv
 from test import Net, Actor
 from tianshou.data import Collector, VectorReplayBuffer, PrioritizedVectorReplayBuffer
 from tianshou.policy import DQNPolicy, RandomPolicy
@@ -72,8 +72,8 @@ def PPO(args):
         f.write(str(args))
     result = onpolicy_trainer(
         policy, train_collector, test_collector,
-        max_epoch=100, step_per_epoch=40000, repeat_per_collect=10, episode_per_collect=40,
-        episode_per_test=50, batch_size=256,
+        max_epoch=args.max_epoch, step_per_epoch=40000, repeat_per_collect=10,
+        episode_per_collect=40, episode_per_test=50, batch_size=256,
         stop_fn=lambda mean_rewards: False,
         save_fn=lambda policy: torch.save(policy.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
         logger=logger)
@@ -99,9 +99,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'eval'])
     parser.add_argument('--exp-name', type=str, required=True)
-    parser.add_argument('--lr', type=float, default=1.2e-5)
+    parser.add_argument('--lr', type=float, default=5e-6)
     parser.add_argument('--cuda', type=int, default=2)
     parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--max-epoch', type=int, default=100)
     # parser.add_argument('--hsize', type=int, default=512)
     parser.add_argument('--load-path', type=str, default='')
     parser.add_argument('--log-dir', type=str, default='log')
