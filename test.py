@@ -17,7 +17,7 @@ END = PASS_MASK+1
 
 class VecData:
 
-    state_shape = (4, 14, 36)
+    state_shape = (4, 15, 36)
     extra_shape = (4, 4)
     action_shape = (4, END)
 
@@ -108,8 +108,10 @@ class VecData:
             return "HU"
         raise ValueError
 
-    def sync(self, shanten, idxs=[0, 1, 2, 3]):
+    def sync(self, shanten, serve, idxs=[0, 1, 2, 3]):
         self.obs.fill(0)
+        if self.str2tile.get(serve):
+            self.obs[:, 14, self.str2tile[serve]] = 1
         self.extra.fill(0)
         self.mask.fill(0)
 
@@ -213,7 +215,7 @@ class Net(nn.Module):
         self.embedding1 = nn.Embedding(22, 8)
         self.embedding2 = nn.Embedding(4, 8)
         self.embedding3 = nn.Embedding(8, 8)
-        self.conv1 = Conv([14, 128], 3, 1, 1, True)
+        self.conv1 = Conv([state_shape[1], 128], 3, 1, 1, True)
         self.conv2 = Conv([128, 128, 128], 3, 1, 1, True)
         self.conv3 = Conv([128, 128, 128], 3, 1, 1, True)
         self.model = nn.Linear(128 * 4 * 9 + 8 * 4, 256)
@@ -222,7 +224,7 @@ class Net(nn.Module):
         self.action_shape = action_shape
         self.device = device
     def forward(self, s, **kwargs):
-        obs = torch.as_tensor(s['obs']['obs'], device=self.device, dtype=torch.float32).view(-1, 14, 4, 9)
+        obs = torch.as_tensor(s['obs']['obs'], device=self.device, dtype=torch.float32).view(-1, self.state_shape[1], 4, 9)
         extra = torch.as_tensor(s['obs']['extra'], device=self.device, dtype=torch.int32)
         state = nn.ReLU(inplace=True)(self.conv1(obs))
         state = nn.ReLU(inplace=True)(state + self.conv2(state))
@@ -660,7 +662,7 @@ class Bot:
             if i == self.id else 0
             for i in range(4)
         ]
-        self.vec_data.sync(shanten, [self.id])
+        self.vec_data.sync(shanten, self.lastTile, [self.id])
         if self.canHu:
             self.vec_data.enable_hu(self.id)
         self.vec_data.enable_pass()

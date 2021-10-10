@@ -87,6 +87,7 @@ def eval(args):
     result = Collector(policy, vis_envs).collect(n_episode=1, render=.5)
 
 def main(args):
+    torch.set_num_threads(1)
     result, policy = PPO(args)
     print(f'Finished training! Use {result["duration"]}')
     print(result)

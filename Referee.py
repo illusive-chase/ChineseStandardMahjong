@@ -444,7 +444,7 @@ class Referee(gym.Env):
             pack = tuple(v.as_tuple() for v in self.playerData[i].pack))
             for i in range(4)
         ]
-        self.vec_data.sync(self.shanten)
+        self.vec_data.sync(self.shanten, self.lastTile)
         for i in range(4):
             if self.canHu[i] > 0:
                 self.vec_data.enable_hu(i)
@@ -510,7 +510,7 @@ class Referee(gym.Env):
         train, self.fixData = self.vec_data.get_obs()
         st = self.shanten[0]
         rew = 1 / (2 + st) * 0.01
-        return train, (rew if self.eval else 0.0), np.array(False), {}
+        return train, rew, np.array(False), {}
 
         
     def render(self):
