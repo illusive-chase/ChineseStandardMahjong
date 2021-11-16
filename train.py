@@ -5,6 +5,7 @@ from tianshou.policy import DQNPolicy, RandomPolicy
 from ppo import PPOPolicy
 from tianshou.env import DummyVectorEnv, SubprocVectorEnv
 from tianshou.trainer import offpolicy_trainer, onpolicy_trainer
+from tianshou.data import Batch
 import torch
 import torch.nn as nn
 import numpy as np
@@ -15,14 +16,21 @@ from tianshou.utils import TensorboardLogger
 import random
 
 
+def wrapped_policy(raw_policy):
+    def wrapped(x):
+        return raw_policy(Batch({'obs': x})).act
+    return wrapped
+
 
 def PPO(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device(f'cuda:{args.cuda}')
-    train_envs = DummyVectorEnv([lambda:REnv(fixPolicy=RandomPolicy(), verbose=False)] * 8)
-    test_envs = DummyVectorEnv([lambda:REnv(fixPolicy=RandomPolicy(), verbose=False, eval=True)] * 5)
+    random_policy = RandomPolicy()
+    fixPolicy = wrapped_policy(random_policy)
+    train_envs = DummyVectorEnv([lambda:REnv(fixPolicy=fixPolicy, verbose=False)] * 8)
+    test_envs = DummyVectorEnv([lambda:REnv(fixPolicy=fixPolicy, verbose=False, eval=True)] * 5)
 
     class Critic(nn.Module):
         def __init__(self, net, state_shape, extra_shape, action_shape, device):
@@ -81,9 +89,10 @@ def PPO(args):
 
 
 def eval(args):
+    torch.set_num_threads(1)
     result, policy = PPO(args)
     policy.eval()
-    vis_envs = DummyVectorEnv([lambda:REnv(fixPolicy=policy, verbose=True)])
+    vis_envs = DummyVectorEnv([lambda:REnv(fixPolicy=wrapped_policy(policy), verbose=True)])
     result = Collector(policy, vis_envs).collect(n_episode=1, render=.5)
 
 def main(args):
@@ -92,7 +101,7 @@ def main(args):
     print(f'Finished training! Use {result["duration"]}')
     print(result)
     policy.eval()
-    vis_envs = DummyVectorEnv([lambda:REnv(fixPolicy=policy, verbose=True)])
+    vis_envs = DummyVectorEnv([lambda:REnv(fixPolicy=wrapped_policy(policy), verbose=True)])
     result = Collector(policy, vis_envs).collect(n_episode=1, render=.5)
 
 

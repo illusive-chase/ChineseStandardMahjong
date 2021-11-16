@@ -1,8 +1,11 @@
 /*
 !/.gitignore
 !/ppo.py
-!/Referee.py
+!/referee.py
 !/screen.py
 !/test.py
 !/train.py
+!/example.py
+!/vec_data.py
+!/bot.py
 __pycache__/

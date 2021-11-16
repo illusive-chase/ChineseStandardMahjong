@@ -1,69 +1,26 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ('Referee',)
+__all__ = ('Bot',)
 
-from MahjongGB import MahjongFanCalculator, MahjongShanten
-import random
+
 from vec_data import VecData, Pack, PlayerData
-import numpy as np
-import gym
-from copy import deepcopy
-
-def visualize(tile):
-    mode = '\033[1;{};40m'.format({
-        'W': 37,
-        'T': 32,
-        'B': 31,
-        'F': 36,
-        'J': 35
-    }[tile[0]])
-    default_mode = '\033[0m'
-    return mode + tile[1:] + default_mode
-
-def visualize_pack(pack):
-    mode = '\033[1;{};40m'.format({
-        'W': 37,
-        'T': 32,
-        'B': 31,
-        'F': 36,
-        'J': 35
-    }[pack.tile[0]])
-    default_mode = '\033[0m'
-    if pack.type == "CHI":
-        num = int(pack.tile[1:])
-        tiles = ''.join([str(num - 1), str(num), str(num + 1)])
-    elif pack.type == "GANG":
-        tiles = 4 * pack.tile[1:]
-    elif pack.type == "PENG":
-        tiles = 3 * pack.tile[1:]
-    else:
-        raise ValueError    
-    return mode + tiles + default_mode
+from MahjongGB import MahjongFanCalculator, MahjongShanten
+import json
 
 
-class FinishError(Exception):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-
-class Referee(gym.Env):
+class Bot:
 
     state_shape = VecData.state_shape
     extra_shape = VecData.extra_shape
     action_shape = VecData.action_shape
 
-    def __init__(self, fixPolicy, verbose, seed=1, eval=False):
-        self.verbose = verbose
-        self.fixPolicy = fixPolicy
-        self.action_space = gym.spaces.Discrete(self.action_shape[1])
-        self.eval = eval
-        self.tileWallDummy = None
-        self.seed(seed)
+    def __init__(self):
+        pass
+        
+    def get_obs(self, requests, responses):
 
-    def reset(self, inputValue: dict = {}):
-        self.display = []
-        self.canHu = [-4] * 4
-        self.rew = np.zeros((4,), dtype=np.float64)
+        _, id, quan = requests[0].split(' ')
+        requests = requests[1:]
 
         # playerData: list[PlayerData]
         self.playerData = [None] * 4
@@ -97,28 +54,22 @@ class Referee(gym.Env):
         # 4-7:玩家打出牌后，通知所有玩家
         # 8-12:玩家杠牌，通知所有玩家
 
-        not_reset = self.tileWallDummy is not None
-
         # quan: int
-        self.quan = self.quan if not_reset else random.randint(0, 3)
+        self.quan = int(quan)
+        self.id = int(id)
         # tileWall: list[str]
-        self.tileWall = []
         # self.shownTile: dict[str:int]
         self.shownTile = {}
         self.str2tile = {}
 
+        self.wait_to_play = None
+
         for k in "WBT":
             for i in range(1, 10):
-                for j in range(4):
-                    self.tileWall.append(k + str(i))
                 self.shownTile[k + str(i)] = 0
         for i in range(1, 5):
-            for j in range(4):
-                self.tileWall.append("F" + str(i))
             self.shownTile["F" + str(i)] = 0
         for i in range(1, 4):
-            for j in range(4):
-                self.tileWall.append("J" + str(i))
             self.shownTile["J" + str(i)] = 0
 
         self.tile2str = list(self.shownTile.keys())
@@ -126,47 +77,31 @@ class Referee(gym.Env):
             self.str2tile[tile] = idx
 
         self.vec_data = VecData(self.shownTile, self.playerData, self.str2tile, self.tile2str, self.quan)
+        self.canHu = 0
         
-        self.wait_to_play = None
-        
-        random.shuffle(self.tileWall)
-        if self.eval:
-            if not_reset:
-                self.tileWall = deepcopy(self.tileWallDummy)
-            else:
-                self.tileWallDummy = deepcopy(self.tileWall)
-        if self.verbose:
-            self.display.append("初始化：SEED {}".format(self.randSeed))
-            self.display.append("\t场风：{}".format("东南西北"[self.quan]))
-            self.display.append("\t牌山：" + ''.join(map(visualize, self.tileWall)))
 
-        partLength = len(self.tileWall) // 4
+        partLength = 136 // 4
         for i in range(4):
             for j in range(partLength):
-                self.playerData[i].pTileWall.append(self.tileWall[partLength * i + j])
+                self.playerData[i].pTileWall.append('??')
 
-        for _ in range(2):
-            self.roundInput(["PASS"] * 4)
-            self.canHu = [0] * 4
-            self.roundOutput()
-        train, self.fixData = self.vec_data.get_obs()
-        return train
+        for response, request in zip(responses, requests):
+            inferred_response = self.infer_response(request)
+            inferred_response[self.id] = response
+            self.roundInput(inferred_response)
+            self.roundOutput(request)
+
+
+        # out->request->response->input->out->request
+        #                  ^              ^      |
+        #                  |              |      |
+        #                  -----------------------
+
+        return self.vec_data.get_obs([self.id])[0]
 
 
     def playerError(self, player: int, code: str):
-        if self.verbose:
-            self.display.append("结束：PLAYER {} ERROR {}".format(player, code))
-            for i in range(4):
-                if (i == player):
-                    self.display.append("\tPLAYER {} SCORE -30".format(i))
-                else:
-                    self.display.append("\tPLAYER {} SCORE +10".format(i))
-        for i in range(4):
-            if (i == player):
-                self.rew[i] = -30.
-            else:
-                self.rew[i] = 10.
-        raise FinishError
+        raise ValueError
 
     def checkHu(self, player: int, re: int):
         if re == -1:
@@ -200,7 +135,7 @@ class Referee(gym.Env):
             try:
                 fan_table = MahjongFanCalculator(
                     hand = tuple(self.playerData[player].tile),
-                    pack = tuple(v.as_tuple() for v in self.playerData[player].pack),
+                    pack = tuple(p.as_tuple() for p in self.playerData[player].pack),
                     winTile = self.lastTile,
                     flowerCount = len(self.playerData[player].flower),
                     isSelfDrawn = self.roundStage == player,
@@ -255,7 +190,6 @@ class Referee(gym.Env):
         raise FinishError
         return re
 
-        
 
     def checkInputPASS(self, response: str, player: int):
         if response != "PASS":
@@ -271,6 +205,11 @@ class Referee(gym.Env):
         elif len(outputList) == 2:
             self.lastTile = outputList[1]
             if outputList[0] == "PLAY":
+                if player != self.id:
+                    self.playerData[player].tile.pop(-1)
+                    self.lastOp = "PLAY"
+                    self.roundStage += 4
+                    return
                 if self.lastTile in self.playerData[player].tile:
                     self.playerData[player].tile.remove(self.lastTile)
                     self.lastOp = "PLAY"
@@ -279,11 +218,16 @@ class Referee(gym.Env):
             elif outputList[0] == "GANG":
                 if self.playerData[player].pTileWall == [] or self.playerData[(player + 1) % 4].pTileWall == []:
                     self.playerError(player, "终局杠牌")
-                for i in range(4):
-                    if self.lastTile not in self.playerData[player].tile:
-                        self.playerError(player, "无牌暗杠")
-                    self.playerData[player].tile.remove(self.lastTile)
-                self.playerData[player].pack.append(Pack("GANG", self.lastTile, player))
+                if player != self.id:
+                    for i in range(4):
+                        self.playerData[player].tile.pop(-1)
+                    self.playerData[player].pack.append(Pack("GANG", '??', player))
+                else:
+                    for i in range(4):
+                        if self.lastTile not in self.playerData[player].tile:
+                            self.playerError(player, "无牌暗杠")
+                        self.playerData[player].tile.remove(self.lastTile)
+                    self.playerData[player].pack.append(Pack("GANG", self.lastTile, player))
                 self.lastOp = "GANG"
                 self.currANGANG = True
                 self.currGANG = False
@@ -316,15 +260,19 @@ class Referee(gym.Env):
         if response == "HU":
             self.checkHu(player, self.canHu[player])
 
-    def checkInputPLAY2(self, response: str,  player: int):
+    def checkInputPLAY2(self, response: str, player: int):
         outputList = response.split(' ')
         if response == "PASS":
             return False
         elif response == "GANG":
-            for i in range(3):
-                if self.lastTile not in self.playerData[player].tile:
-                    self.playerError(player, "无刻子杠牌")
-                self.playerData[player].tile.remove(self.lastTile)
+            if player != self.id:
+                for i in range(3):
+                    self.playerData[player].tile.pop(-1)
+            else:
+                for i in range(3):
+                    if self.lastTile not in self.playerData[player].tile:
+                        self.playerError(player, "无刻子杠牌")
+                    self.playerData[player].tile.remove(self.lastTile)
             self.shownTile[self.lastTile] = 4
             self.lastOp = "GANG"
             self.currGANG = True
@@ -337,20 +285,27 @@ class Referee(gym.Env):
             return True
         elif len(outputList) == 2:
             if outputList[0] == "PENG":
-                for i in range(2):
-                    if self.lastTile not in self.playerData[player].tile:
-                        self.playerError(player, "无对子碰牌")
-                    self.playerData[player].tile.remove(self.lastTile)
+                if player != self.id:
+                    for i in range(3):
+                        self.playerData[player].tile.pop(-1)
+                else:
+                    for i in range(2):
+                        if self.lastTile not in self.playerData[player].tile:
+                            self.playerError(player, "无对子碰牌")
+                        self.playerData[player].tile.remove(self.lastTile)
                 self.shownTile[self.lastTile] += 3
                 self.lastOp = "PENG"
                 self.playerData[player].pack.append(Pack("PENG", self.lastTile, self.roundStage % 4))
                 self.lastTile = outputList[1]
-                if self.lastTile == '??':
-                    self.wait_to_play = player
+                if player != self.id:
+                    self.playerData[player].tile.pop(-1)
                 else:
-                    if self.lastTile not in self.playerData[player].tile:
-                        self.playerError(player, "打出非手牌 " + self.lastTile)
-                    self.playerData[player].tile.remove(self.lastTile)
+                    if self.wait_to_play:
+                        assert self.lastTile == '??' and player == self.wait_to_play
+                    else:
+                        if self.lastTile not in self.playerData[player].tile:
+                            self.playerError(player, "打出非手牌 " + self.lastTile)
+                        self.playerData[player].tile.remove(self.lastTile)
                 self.roundStage = 4 + player
                 return True
         if len(outputList) != 3:
@@ -362,27 +317,39 @@ class Referee(gym.Env):
         if len(outputList) == 3:
             if outputList[0] != "CHI" or (self.roundStage - player) % 4 != 3:
                 self.playerError(player, "非法操作 " + response)
-            self.playerData[player].tile.append(self.lastTile)
-            c = outputList[1]
-            if c[0] not in 'WBT' or c[0] != self.lastTile[0] or abs(ord(c[1]) - ord(self.lastTile[1])) > 1:
-                self.playerError(player, "吃非数字牌或数字不匹配")
-            c = c[0] + chr(ord(c[1]) - 1)
-            for i in [-1, 0, 1]:
-                self.shownTile[c] += 1
-                if c not in self.playerData[player].tile:
-                    self.playerError(player, "无搭子吃牌")
-                self.playerData[player].tile.remove(c)
-                c = c[0] + chr(ord(c[1]) + 1)
+            if player != self.id:
+                self.playerData[player].tile.pop(-1)
+                self.playerData[player].tile.pop(-1)
+                c = outputList[1]
+                c = c[0] + chr(ord(c[1]) - 1)
+                for i in [-1, 0, 1]:
+                    self.shownTile[c] += 1
+                    c = c[0] + chr(ord(c[1]) + 1)
+            else:
+                self.playerData[player].tile.append(self.lastTile)
+                c = outputList[1]
+                if c[0] not in 'WBT' or c[0] != self.lastTile[0] or abs(ord(c[1]) - ord(self.lastTile[1])) > 1:
+                    self.playerError(player, "吃非数字牌或数字不匹配")
+                c = c[0] + chr(ord(c[1]) - 1)
+                for i in [-1, 0, 1]:
+                    self.shownTile[c] += 1
+                    if c not in self.playerData[player].tile:
+                        self.playerError(player, "无搭子吃牌")
+                    self.playerData[player].tile.remove(c)
+                    c = c[0] + chr(ord(c[1]) + 1)
             self.lastOp = "CHI"
             self.tileCHI = outputList[1]
             self.playerData[player].pack.append(Pack("CHI", self.tileCHI, ord(self.lastTile[1]) - ord(outputList[1][1]) + 1))
             self.lastTile = outputList[2]
-            if self.lastTile == '??':
-                self.wait_to_play = player
+            if player != self.id:
+                self.playerData[player].tile.pop(-1)
             else:
-                if self.lastTile not in self.playerData[player].tile:
-                    self.playerError(player, "打出非手牌 " + self.lastTile)
-                self.playerData[player].tile.remove(self.lastTile)
+                if self.wait_to_play:
+                    assert self.lastTile == '??' and player == self.wait_to_play
+                else:
+                    if self.lastTile not in self.playerData[player].tile:
+                        self.playerError(player, "打出非手牌 " + self.lastTile)
+                    self.playerData[player].tile.remove(self.lastTile)
             self.roundStage = 4 + player
             return True
         return False
@@ -394,94 +361,86 @@ class Referee(gym.Env):
             return
         self.playerError(player, "非法操作 " + response)
 
-    def roundOutput(self):
-        if self.wait_to_play is not None:
+    def infer_response(self, request: str):
+        inferred_response = ['PASS'] * 4
+        request = request.split(' ')
+        if request[0] == '3' and request[2] in ['PLAY', 'CHI', 'PENG', 'GANG', 'BUGANG']:
+            player = int(request[1])
+            inferred_response[player] = ' '.join(request[2:])
+            if request[2] == 'GANG' and self.lastOp == 'DRAW':
+                inferred_response[player] += ' ??'
+        return inferred_response
+
+
+    def roundOutput(self, request: str):
+        if self.wait_to_play:
             self.vec_data.sync(self.shanten, idxs=[self.wait_to_play])
-            self.vec_data.check_able_play(self.wait_to_play, False)
+            self.vec_data.check_able_play(self.wait_to_play)
             return
         post_fn = lambda :None
+        request = request.split(' ')
         if self.roundStage == -1:
-            if self.verbose:
-                self.display.append("发牌：")
+            hua = [int(i) for i in request[1:5]]
             for i in range(4):
-                while len(self.playerData[i].tile) < 13:
+                while len(self.playerData[i].tile) < 13 + hua[i]:
                     nextTile = self.playerData[i].pTileWall.pop(-1)
-                    if nextTile[0] == 'H':
-                        self.playerData[i].flower.append(nextTile)
-                    else:
-                        self.playerData[i].tile.append(nextTile)
-            if self.verbose:
-                for i in range(4):
-                    self.playerData[i].tile.sort()
-                    self.display.append("\tPLAYER {} 花牌 {} 手牌 {}".format(i, self.playerData[i].flower, ''.join(map(visualize, self.playerData[i].tile))))
+                    self.playerData[i].tile.append(nextTile)
+            self.playerData[self.id].tile = request[5:18]
+            self.playerData[0].flower = request[18:18+hua[0]]
+            self.playerData[1].flower = request[18+hua[0]:18+hua[1]]
+            self.playerData[2].flower = request[18+hua[1]:18+hua[2]]
+            self.playerData[3].flower = request[18+hua[2]:18+hua[3]]
         elif self.roundStage >= 0 and self.roundStage < 4:
             tw = self.playerData[self.roundStage % 4].pTileWall
             if tw == []:
-                if self.verbose:
-                    self.display.append("结束：荒牌")
-                raise FinishError
+                pass
             self.lastTile = tw.pop(-1)
+            if request[:3] == ['3', str(self.roundStage % 4), 'BUHUA']:
+                self.lastTile = request[3]
+            elif self.roundStage % 4 == self.id:
+                assert request[0] == '2'
+                self.lastTile = request[1]
+            else:
+                assert request[:3] == ['3', str(self.roundStage % 4), 'DRAW']
             if self.lastTile[0] == 'H':
                 self.lastOp = "BUHUA"
-                if self.verbose:
-                    self.display.append("PLAYER {} 补花 {}".format(self.roundStage, self.lastTile))
                 self.playerData[self.roundStage % 4].flower.append(self.lastTile)
             else:
                 self.lastOp = "DRAW"
-                if self.verbose:
-                    self.display.append("PLAYER {} 摸牌 {}".format(self.roundStage, visualize(self.lastTile)))
-                self.canHu[self.roundStage] = self.checkHu(self.roundStage, -1)
-                post_fn = lambda : self.playerData[self.roundStage].tile.append(self.lastTile)
+                if self.roundStage % 4 == self.id:
+                    self.canHu = self.checkHu(self.id, -1)
+                    post_fn = lambda : self.playerData[self.roundStage].tile.append(self.lastTile)
         elif self.roundStage >= 4 and self.roundStage < 8:
             if self.playerData[(self.lastRoundStage + 1) % 4].pTileWall == [] and self.lastOp in ["CHI", "PENG"]:
                 self.playerError(self.roundStage % 4, "终局吃碰 " + self.lastOp)
-            if self.verbose and self.wait_to_play is None:
-                if self.lastOp == "CHI":
-                    self.display.append("PLAYER {} 吃牌 {} 出牌 {}".format(self.roundStage % 4, visualize(self.tileCHI), visualize(self.lastTile)))
-                else:
-                    self.display.append("PLAYER {} {} {}".format(self.roundStage % 4, {"PENG": "碰牌 出牌", "PLAY": "出牌"}[self.lastOp], visualize(self.lastTile)))
-            for i in range(4):
-                if self.roundStage % 4 != i:
-                    self.canHu[i] = self.checkHu(i, -1)
+            if self.roundStage % 4 != self.id:
+                self.canHu = self.checkHu(self.id, -1)
+            assert request[:2] == ['3', str(self.roundStage % 4)] and request[2] in ['CHI', 'PENG', 'PLAY']
         else:
             if self.playerData[(self.lastRoundStage + 1) % 4].pTileWall == [] and self.lastOp in ["GANG", "BUGANG"]:
                 self.playerError(self.roundStage % 4, "终局杠牌 " + self.lastOp)
             if self.lastOp != "GANG" and self.lastBUGANG:
-                for i in range(4):
-                    if self.roundStage % 4 != i:
-                        self.canHu[i] = self.checkHu(i, -1)
-            if self.verbose:
-                self.display.append("PLAYER {} {}".format(self.roundStage % 4, ("杠牌" if self.lastOp == "GANG" else "补杠")))
-        self.shanten = [MahjongShanten(
+                if self.roundStage % 4 != self.id:
+                    self.canHu = self.checkHu(self.id, -1)
+            assert request[:2] == ['3', str(self.roundStage % 4)] and request[2] in ["GANG", "BUGANG"]
+        shanten = [MahjongShanten(
             hand = tuple(self.playerData[i].tile),
             pack = tuple(v.as_tuple() for v in self.playerData[i].pack))
+            if i == self.id else 0
             for i in range(4)
         ]
         post_fn()
-        self.vec_data.sync(self.shanten)
-        for i in range(4):
-            if self.canHu[i] > 0:
-                self.vec_data.enable_hu(i)
+        self.vec_data.sync(shanten, [self.id])
+        if self.canHu:
+            self.vec_data.enable_hu(self.id)
         self.vec_data.enable_pass()
-        if self.lastOp == "DRAW":
+        if self.lastOp == "DRAW" and self.roundStage % 4 == self.id:
             self.vec_data.check_able_play(self.roundStage % 4)
         if self.roundStage >= 4 and self.roundStage < 8:
             self.vec_data.check_able_ming(self.roundStage % 4, self.lastTile)
         
 
     def roundInput(self, response: list):
-        if self.wait_to_play is not None:
-            player = self.wait_to_play
-            outputList = response[player].split()
-            self.lastTile = outputList[1]
-            assert outputList[0] == "PLAY"
-            if self.lastTile not in self.playerData[player].tile:
-                self.playerError(player, "打出非手牌 " + self.lastTile)
-            self.playerData[player].tile.remove(self.lastTile)
-            self.shownTile[self.lastTile] += 1
-            self.wait_to_play = None
-            return
-
         self.lastRoundStage = self.roundStage
         if self.roundStage < 0:
             for i in range(4):
@@ -520,51 +479,25 @@ class Referee(gym.Env):
             self.roundStage -= 8
 
 
-    def step(self, raw_action):
-        fix_action = self.fixPolicy(self.fixData)
-        action = [raw_action if i == 0 else fix_action[i - 1] for i in range(4)]
-        real_action = [self.vec_data.realize(action[i]) for i in range(4)]
-        while True:
-            try:
-                self.roundInput(real_action)
-                self.canHu = [-4] * 4
-                self.roundOutput()
-            except FinishError:
-                rew = self.rew[0]
-                rew = -2 if rew < 0 else (-1 if rew == 0 else (0.5 * self.rew[0]) ** 0.5)
-                return self.vec_data.get_obs()[0], rew, np.array(True), {}
-            finally:
-                pass
-            if self.wait_to_play is None:
-                train, self.fixData = self.vec_data.get_obs()
-            else:
-                train, _ = self.vec_data.get_obs(main=self.wait_to_play, other=[])
-                if self.wait_to_play > 0:
-                    real_action[self.wait_to_play] = self.vec_data.realize(self.fixPolicy(train))
-                    continue
-            st = self.shanten[0]
-            rew = 1 / (2 + st) * 0.01
-            return train, rew, np.array(False), {}
+    def stepOneRound(self, policy):
+        full_input = json.loads(input())
+        all_requests = full_input["requests"]
+        all_responses = full_input["responses"]
+        if len(all_requests) == 1:
+            action = 'PASS'
+        else:
+            obs = self.get_obs(all_requests, all_responses)
+            action = self.vec_data.realize(policy(obs))
+            if '??' in action:
+                self.wait_to_play = True
+                self.roundInput([action if i == self.id else 'PASS' for i in range(4)])
+                self.roundOutput(None)
+                obs = self.vec_data.get_obs([self.id])[0]
+                action = self.vec_data.realize(policy(obs))
+        print(json.dumps({
+            "response": action,
+            "debug": "",
+            "data": "",
+            "globaldata": ""
+        }))
 
-        
-    def render(self):
-        if self.verbose:
-            for i in range(4):
-                self.playerData[i].tile.sort()
-                self.display.append("PLAYER {} REST {}\n\tHAND {} {}\n\tPACK {}".format(
-                    i,
-                    len(self.playerData[i].pTileWall),
-                    ''.join(map(visualize, self.playerData[i].tile)),
-                    visualize(self.lastTile) if self.lastOp == "DRAW" and i == self.roundStage else '',
-                    ' '.join(map(visualize_pack, self.playerData[i].pack))
-                ))
-            print("\n".join(self.display))
-            self.display = []
-
-    def close(self):
-        pass
-
-    def seed(self, randSeed):
-        self.randSeed = randSeed
-        random.seed(randSeed)
-        np.random.seed(randSeed)
