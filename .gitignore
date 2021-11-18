@@ -1,11 +1,12 @@
 /*
 !/.gitignore
-!/ppo.py
-!/referee.py
 !/screen.py
 !/test.py
 !/train.py
 !/example.py
-!/vec_data.py
-!/bot.py
+!/preprocess.py
+!/utils/
+!/learning/
+!/env/
+!/requirements.txt/
 __pycache__/

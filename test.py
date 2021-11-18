@@ -2,7 +2,7 @@
 import torch
 from torch import nn
 import numpy as np
-from bot import Bot
+from env.bot import Bot
 
 
 def MLP(channels, do_bn=False):

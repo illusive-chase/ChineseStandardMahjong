@@ -1,20 +1,23 @@
-from referee import Referee as REnv
-from tianshou.data import Collector
-from tianshou.policy import RandomPolicy
-from tianshou.env import DummyVectorEnv
-from tianshou.data import Batch
+from env.runner import Runner as REnv
+from utils.policy import random_policy, stdin_policy
 import argparse
 import numpy as np
+import time
 
-def wrapped_policy(raw_policy):
-    def wrapped(x):
-        return raw_policy(Batch({'obs': x})).act
-    return wrapped
 
 def main(args):
-    policy = RandomPolicy()
-    vis_envs = DummyVectorEnv([lambda:REnv(fixPolicy=wrapped_policy(policy), seed=args.seed, verbose=True)])
-    result = Collector(policy, vis_envs).collect(n_episode=100, render=0)
+    # episode per second = 30
+    env = REnv(other_policy=random_policy(), seed=args.seed, verbose=False)
+    policy = random_policy()
+    start = time.time()
+    for eps in range(500):
+        print(eps)
+        obs = env.reset()
+        done = False
+        while not done:
+            obs, rew, done, info = env.step(policy(obs))
+        env.render()
+    print('EPS: {:.1f}'.format(eps / (time.time() - start)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

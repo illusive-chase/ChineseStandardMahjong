@@ -1,8 +1,8 @@
-from referee import Referee as REnv
+from env.runner import Runner as REnv
 from test import Net, Actor
 from tianshou.data import Collector, VectorReplayBuffer, PrioritizedVectorReplayBuffer
 from tianshou.policy import DQNPolicy, RandomPolicy
-from ppo import PPOPolicy
+from learning.ppo import PPOPolicy
 from tianshou.env import DummyVectorEnv, SubprocVectorEnv
 from tianshou.trainer import offpolicy_trainer, onpolicy_trainer
 from tianshou.data import Batch
@@ -13,7 +13,6 @@ import argparse
 import gym
 from torch.utils.tensorboard import SummaryWriter
 from tianshou.utils import TensorboardLogger
-import random
 
 
 def wrapped_policy(raw_policy):
@@ -25,7 +24,6 @@ def wrapped_policy(raw_policy):
 def PPO(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    random.seed(args.seed)
     device = torch.device(f'cuda:{args.cuda}')
     random_policy = RandomPolicy()
     fixPolicy = wrapped_policy(random_policy)
