@@ -4,7 +4,6 @@ __all__ = ('Runner',)
 
 from MahjongGB import MahjongFanCalculator, MahjongShanten
 from utils.vec_data import VecData
-from utils.policy import random_policy, imitation_policy
 import numpy as np
 import gym
 from copy import deepcopy

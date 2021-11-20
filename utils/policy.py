@@ -4,6 +4,7 @@ __all__ = ('random_policy', 'stdin_policy', 'imitation_policy', 'inference_polic
 from utils.distribution import sample_by_mask
 from utils.match_data import MatchData
 from utils.tile_traits import str2tile, tile2str
+from torch import nn
 import numpy as np
 
 
@@ -131,9 +132,6 @@ class inference_policy:
             final_info=self.fan_info,
             scores=np.asarray(self.scores, dtype=np.int32)
         )
-            
-
-
 
 
 class imitation_policy:
@@ -148,3 +146,4 @@ class imitation_policy:
         self.idxs[obs[2]] += 1
         return action
     
+
