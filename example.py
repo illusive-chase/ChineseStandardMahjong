@@ -8,6 +8,7 @@ import time
 import random
 
 
+
 def random_test(args):
     # episode per second = 33.5
     env = REnv(other_policy=random_policy(), seed=args.seed, verbose=False)

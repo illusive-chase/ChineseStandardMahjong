@@ -6,7 +6,7 @@ from torch import nn
 import torch
 import gym
 import numpy as np
-from tianshou.data import Batch, to_torch, to_torch_as
+from tianshou.data import Batch, to_torch
 
 
 
@@ -26,30 +26,41 @@ class tianshou_imitation_policy(nn.Module):
 
     def to(self, device):
         self.device = device
-        return self.to(device)
+        return super().to(device)
 
-    def forward(self, batch, state=None):
-        obs = to_torch(batch.obs.obs, device=self.device).float().view(-1, 145, 4, 9)
-        return Batch(act=self.network(obs), state=state)
+    def forward(self, batch, state=None, mask=None):
+        if mask is None:
+            return Batch(act=batch.obs.gt_action, state=state)
+        logits = self.network(batch)
+        return logits + (logits.min() - logits.max() - 20) * mask
+
 
     def post_process_fn(self, batch, buffer, indices):
         if hasattr(buffer, "update_weight") and hasattr(batch, "weight"):
             buffer.update_weight(indices, batch.weight)
 
-    def update(self, sample_size, buffer):
+    def update(self, sample_size, buffer, val=False):
         batch, indices = buffer.sample(sample_size)
+        obs = to_torch(batch.obs.obs, device=self.device).float().view(-1, 145, 4, 9)
+        mask = (~to_torch(batch.obs.mask, device=self.device)).float()
         gt_action = to_torch(batch.obs.gt_action, device=self.device).long()
         losses = []
 
-        self.optim.zero_grad()
-        action = self(batch).act
-        loss = nn.CrossEntropyLoss()(action, gt_action)
-        loss.backward()
-        self.optim.step()
+        if val:
+            action = self(obs, mask=mask)
+            loss = nn.CrossEntropyLoss()(action, gt_action)
+            losses.append(loss.item())
+        else:
+            for i in range(1):
+                self.optim.zero_grad()
+                action = self(obs, mask=mask)
+                loss = nn.CrossEntropyLoss()(action, gt_action)
+                loss.backward()
+                self.optim.step()
+                losses.append(loss.item())
+            self.post_process_fn(batch, buffer, indices)
 
-        losses.append(loss.item())
-        self.post_process_fn(batch, buffer, indices)
-        return {"loss": losses}
+        return {("val-loss" if val else "loss"): losses}
 
     def map_action(self, action):
         return action
