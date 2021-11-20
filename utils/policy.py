@@ -3,6 +3,7 @@ __all__ = ('random_policy', 'stdin_policy', 'imitation_policy', 'inference_polic
 
 from utils.distribution import sample_by_mask
 from utils.match_data import MatchData
+from utils.tile_traits import str2tile, tile2str
 import numpy as np
 
 
@@ -119,14 +120,16 @@ class inference_policy:
         return try_action
 
     def as_match_data(self, id=0):
+        tile_wall = sum(map(lambda x:list(reversed(x)), self.tile_wall), [])
+        tile_wall = np.asarray([34 if tile == '??' else str2tile[tile] for tile in tile_wall], dtype=np.uint8)
         return MatchData(
             match_id=self.match_id,
             id=id,
             quan=self.quan,
-            tile_wall=sum(map(lambda x:list(reversed(x)), self.tile_wall), []),
-            actions=list(map(np.asarray, self.inferred)),
+            tile_wall=tile_wall,
+            actions=list(map(lambda x:np.asarray(x, dtype=np.uint8), self.inferred)),
             final_info=self.fan_info,
-            scores=np.asarray(self.scores)
+            scores=np.asarray(self.scores, dtype=np.int32)
         )
             
 
@@ -134,4 +137,14 @@ class inference_policy:
 
 
 class imitation_policy:
-    pass
+    def __init__(self, match):
+        self.actions = np.zeros((4, max([match.actions[i].shape[0] for i in range(4)])), dtype=np.uint8)
+        for i in range(4):
+            self.actions[i, :match.actions[i].shape[0]] = match.actions[i]
+        self.idxs = np.asarray([0] * 4)
+
+    def __call__(self, obs):
+        action = self.actions[obs[2], self.idxs[obs[2]]]
+        self.idxs[obs[2]] += 1
+        return action
+    

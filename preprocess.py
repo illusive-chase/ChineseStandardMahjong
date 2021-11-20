@@ -13,7 +13,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     
-    with open(args.output, 'w', encoding='utf-8') as fw:
+    with open(args.output, 'wb') as fb:
         with open(args.match_file, 'r', encoding='utf-8') as f:
             line = f.readline()
             lines = []
@@ -21,9 +21,8 @@ if __name__ == "__main__":
             while True:
                 if not line or line[0:5] == 'Match':
                     if lines and (not args.match_id or args.match_id == lines[0].split()[1]):
-                        assert lines[-1] == ''
-                        assert lines[-2][:5] == 'Score'
-                        lines.pop(-1)
+                        assert lines[-1][:5] == 'Score'
+                        # lines.pop(-1)
                         policy = inference_policy(lines)
                         env = REnv(policy, args.verbose)
                         init_data = policy.as_match_data()
@@ -36,11 +35,12 @@ if __name__ == "__main__":
                         env.render()
                         equal = bool((env.rew.astype(init_data.scores.dtype) == init_data.scores).all())
                         assert equal, init_data.match_id
-                        policy.as_match_data().dump(fw)
+                        policy.as_match_data().dump(fb)
                         print('{:05d}'.format(ith), init_data.match_id)
                         ith += 1
                     lines = []
                     if not line:
                         break
-                lines.append(line.rstrip())
+                if line.rstrip():
+                    lines.append(line.rstrip())
                 line = f.readline()

@@ -3,7 +3,7 @@
 __all__ = ('Runner',)
 
 from MahjongGB import MahjongFanCalculator, MahjongShanten
-from utils.vec_data import VecData, Pack, PlayerData
+from utils.vec_data import VecData
 from utils.policy import random_policy, imitation_policy
 import numpy as np
 import gym
@@ -62,7 +62,8 @@ class Runner(gym.Env):
         self.eval = eval
         self.tileWallDummy = None
         self.seed(seed)
-        self.no_need_other_obs = type(other_policy) is imitation_policy
+        # self.no_need_other_obs = type(other_policy) is imitation_policy
+        self.no_need_other_obs = False
 
 
     def reset(self, init_data=None):
@@ -131,6 +132,8 @@ class Runner(gym.Env):
 
         self.vec_data = VecData(self.quan, (self.other if self.no_need_other_obs else []))
         self.playerData, self.shownTile, self.str2tile, self.tile2str = self.vec_data.connect()
+        if init_data is not None:
+            self.tileWall = [self.tile2str[tile] if tile < 34 else '??' for tile in self.tileWall]
         partLength = len(self.tileWall) // 4
         for i in range(4):
             for j in range(partLength):

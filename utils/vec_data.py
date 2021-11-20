@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ('VecData', 'Pack', 'PlayerData')
+__all__ = ('VecData',)
 
 
 import numpy as np
+from utils.tile_traits import PlayerData, str2tile, tile2str
 
 PLAY_MASK = 0
 CHI_MASK = 34
@@ -17,31 +18,17 @@ END = PASS_MASK+1
 assert END == 235
 
 
-str2tile = {}
-tile2str = []
-for k in "WBT":
-    for i in range(1, 10):
-        str2tile[k + str(i)] = len(tile2str)
-        tile2str.append(k + str(i))
-for i in range(1, 5):
-    str2tile["F" + str(i)] = len(tile2str)
-    tile2str.append("F" + str(i))
-for i in range(1, 4):
-    str2tile["J" + str(i)] = len(tile2str)
-    tile2str.append("J" + str(i))
-
 class VecData:
 
     state_shape = (4, 145, 36)
     action_shape = (4, END)
 
     def __init__(self, quan, no_obs_players):
-        global str2tile, tile2str
         self.obs = np.zeros(self.state_shape, dtype=np.bool)
         self.str2tile = str2tile
         self.tile2str = tile2str
         self.mask = np.zeros(self.action_shape, dtype=np.bool)
-        self.players = [PlayerData(None if i in no_obs_players else self.obs[i]) for i in range(4)]
+        self.players = [PlayerData(None if i in no_obs_players else (self.obs, i)) for i in range(4)]
         self.fshown = np.zeros(34, dtype=np.uint8)
         self.shown = np.zeros((4, 34), dtype=np.bool)
         self.no_obs_players = no_obs_players
@@ -62,7 +49,7 @@ class VecData:
         if player in self.no_obs_players:
             return
         self.mask[player, PASS_MASK] = 0
-        hand = self.players[player].fhand
+        hand = self.players[player].get_hand_count()
         self.mask[player][PLAY_MASK:CHI_MASK] = hand
         if canGANG and self.players[(player + 1) % 4].pTileWall != [] and self.players[player % 4].pTileWall != []:
             self.mask[player, ANGANG_MASK:HU_MASK] = hand == 4
@@ -184,127 +171,5 @@ class VecData:
             (self.obs[main], self.mask[main], np.asarray(main)),
             (self.obs[other], self.mask[other], np.asarray(other))
         )
-            
 
-# type: str, tile: str, offer: int
-class Pack:
-    def __init__(self, type, tile, offer, isANGANG=False):
-        self.type = type
-        self.tile = tile
-        self.offer = offer
-        self.isANGANG = isANGANG
-    def as_tuple(self, player):
-        return self.type, self.tile, (3 if self.type == 'CHI' else (4 + self.offer - player) % 4)
-
-# pack: list[Pack], tile: list[str], flower: list[flower], pTileWall: list[str]
-class PlayerData:
-    def __init__(self, sync_array):
-        self.pack = []
-        self.tile = []
-        self.flower = []
-        self.pTileWall = []
-        self.sync = sync_array is not None
-        if self.sync:
-            self.__hand = sync_array[4:8, :34]
-            self.__chi = sync_array[8:12, :34]
-            self.__peng = sync_array[24, :34]
-            self.__gang = sync_array[28, :34]
-            self.__angang = sync_array[32, :34]
-            self.fhand = np.zeros(34, dtype=np.uint8)
-            self.__fchi = np.zeros(34, dtype=np.uint8)
-            global tile2str, str2tile
-            self.tile2str = tile2str
-            self.str2tile = str2tile
-
-    def draw(self, tile_str):
-        self.tile.append(tile_str)
-        if self.sync:
-            tile_t = self.str2tile[tile_str]
-            self.__hand[self.fhand[tile_t], tile_t] = 1
-            self.fhand[tile_t] += 1
-    
-    def play(self, tile_str):
-        if tile_str not in self.tile:
-            return False
-        self.tile.remove(tile_str)
-        if self.sync:
-            tile_t = self.str2tile[tile_str]
-            self.fhand[tile_t] -= 1
-            self.__hand[self.fhand[tile_t], tile_t] = 0
-        return True
-
-    def angang(self, tile_str, offer):
-        if self.tile.count(tile_str) < 4:
-            return False
-        for _ in range(4):
-            self.tile.remove(tile_str)
-        self.pack.append(Pack("GANG", tile_str, offer, isANGANG=True))
-        if self.sync:
-            tile_t = self.str2tile[tile_str]
-            self.__angang[tile_t] = 1
-            self.fhand[tile_t] = 0
-            self.__hand[:, tile_t] = 0
-        return True
-
-    def bugang(self, tile_str):
-        if tile_str not in self.tile:
-            return False
-        for i, pack in enumerate(self.pack):
-            if pack.type == "PENG" and pack.tile == tile_str:
-                self.pack[i] = Pack("GANG", pack.tile, pack.offer)
-                self.tile.remove(tile_str)
-                if self.sync:
-                    tile_t = self.str2tile[tile_str]
-                    self.__gang[tile_t] = 1
-                    self.__peng[tile_t] = 0
-                    self.fhand[tile_t] -= 1
-                    self.__hand[self.fhand[tile_t], tile_t] = 0
-                return True
-        return False
-
-    def gang(self, tile_str, offer):
-        if self.tile.count(tile_str) < 3:
-            return False
-        self.pack.append(Pack("GANG", tile_str, offer))
-        for _ in range(3):
-            self.tile.remove(tile_str)
-        if self.sync:
-            tile_t = self.str2tile[tile_str]
-            self.__gang[tile_t] = 1
-            self.fhand[tile_t] -= 3
-            self.__hand[self.fhand[tile_t]:self.fhand[tile_t]+3, tile_t] = 0
-        return True
-
-    def peng(self, tile_str, offer):
-        if self.tile.count(tile_str) < 2:
-            return False
-        for _ in range(2):
-            self.tile.remove(tile_str)
-        self.pack.append(Pack("PENG", tile_str, offer))
-        if self.sync:
-            tile_t = self.str2tile[tile_str]
-            self.__peng[tile_t] = 1
-            self.fhand[tile_t] -= 2
-            self.__hand[self.fhand[tile_t]:self.fhand[tile_t]+2, tile_t] = 0
-        return True
-
-    def chi(self, mid_tile_str, tile_str):
-        c = mid_tile_str[0] + chr(ord(mid_tile_str[1]) - 1)
-        for i in [-1, 0, 1]:
-            if c not in self.tile:
-                return False
-            self.tile.remove(c)
-            c = c[0] + chr(ord(c[1]) + 1)
-        self.lastOp = "CHI"
-        self.tileCHI = mid_tile_str
-        self.pack.append(Pack("CHI", mid_tile_str, ord(tile_str[1]) - ord(mid_tile_str[1]) + 1))
-        if self.sync:
-            tile_t = self.str2tile[mid_tile_str]
-            self.__chi[self.__fchi[tile_t], tile_t] = 1
-            self.__fchi[tile_t] += 1
-            self.fhand[tile_t-1:tile_t+2] -= 1
-            self.__hand[self.fhand[tile_t-1], tile_t-1] = 0
-            self.__hand[self.fhand[tile_t], tile_t] = 0
-            self.__hand[self.fhand[tile_t+1], tile_t+1] = 0
-        return True
         
