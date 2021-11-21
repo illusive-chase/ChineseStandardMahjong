@@ -12,14 +12,14 @@ from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv, SubprocVectorEnv
 from tianshou.utils import TensorboardLogger
 from torch.utils.tensorboard import SummaryWriter
-from learning.model import resnet18
+from learning.model import resnet34 as resnet
 
 
 
 def eval(args):
     torch.set_num_threads(1)
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
-    network = resnet18(use_bn=True)
+    network = resnet(use_bn=False)
     policy = wrapper_policy(network).to(device)
     policy.load(f'./{args.log_dir}/{args.exp_name}/policy.pth')
     policy.eval()
@@ -40,7 +40,7 @@ def train(args):
     dataset = MatchDataset(args.file)
     envs = SubprocVectorEnv([lambda:IEnv(dataset, verbose=False, seed=args.seed + 1000 * i) for i in range(args.parallel)])
     val_envs = DummyVectorEnv([lambda:IEnv(dataset, verbose=False, seed=0)])
-    network = resnet18(use_bn=True)
+    network = resnet(use_bn=False)
     policy = tianshou_imitation_policy(network, lr=args.learning_rate).to(device)
     train_collector = Collector(policy, envs, VectorReplayBuffer(100000, args.parallel))
     val_collector = Collector(policy, val_envs, VectorReplayBuffer(5000, 1))
@@ -55,7 +55,7 @@ def train(args):
         max_epoch=args.num_epoch,
         update_per_epoch=50,
         episode_per_train=100,
-        batch_size=16384,
+        batch_size=8196,
         save_fn=lambda p: torch.save(p.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
         logger=logger)
     return result, policy
