@@ -9,5 +9,6 @@
 !/utils/
 !/learning/
 !/env/
-!/requirements.txt/
+!/requirements.txt
+!/README.md
 __pycache__/
