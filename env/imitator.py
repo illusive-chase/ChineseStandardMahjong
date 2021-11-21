@@ -17,8 +17,11 @@ class Imitator(Runner):
         else:
             self.dataset = MatchDataset(path)
 
-    def reset(self):
-        match_data = self.dataset.get(np.random.randint(0, self.dataset.size()))
+    def reset(self, idx=None):
+        if idx is None:
+            match_data = self.dataset.get(np.random.randint(0, self.dataset.size()))
+        else:
+            match_data = self.dataset.get(idx)
         self.other_policy = imitation_policy(match_data)
         self.action_waiting_list = [None] * 4
         super().reset(match_data)

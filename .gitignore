@@ -1,14 +1,10 @@
 /*
 !/.gitignore
-!/screen.py
-!/test.py
-!/train.py
-!/example.py
 !/imitate.py
-!/preprocess.py
 !/utils/
 !/learning/
 !/env/
 !/requirements.txt
+!/scripts/
 !/README.md
 __pycache__/

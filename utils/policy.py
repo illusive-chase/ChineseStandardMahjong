@@ -68,7 +68,7 @@ class inference_policy:
     def __call__(self, obs):
         players = obs[2].reshape(-1)
         mask = obs[1].reshape(players.shape[0], -1)
-        self.count += (mask.sum(1) > 1).sum() * 4 * 9 * 145 * 8 / 1024 / 1024
+        self.count += (mask.sum(1) > 1).sum() * 4 * 9 * 145 / 1024 / 1024
         lst = self.match_lines[self.idx].split()
         while lst[2] == 'Draw':
             self.last = None
