@@ -13,6 +13,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     
+    total_count = 0
     with open(args.output, 'wb') as fb:
         with open(args.match_file, 'r', encoding='utf-8') as f:
             line = f.readline()
@@ -36,7 +37,8 @@ if __name__ == "__main__":
                         equal = bool((env.rew.astype(init_data.scores.dtype) == init_data.scores).all())
                         assert equal, init_data.match_id
                         policy.as_match_data().dump(fb)
-                        print('{:05d}'.format(ith), init_data.match_id)
+                        total_count += policy.count / 1024
+                        print('{:05d}'.format(ith), init_data.match_id, '{:.1f} GB'.format(total_count))
                         ith += 1
                     lines = []
                     if not line:

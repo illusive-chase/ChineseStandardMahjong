@@ -39,7 +39,7 @@ def imitation_trainer(
     train_collector.reset_stat()
 
     train_result = test_episode(
-        policy, train_collector, test_fn, start_epoch, episode_per_train * 10, logger,
+        policy, train_collector, test_fn, start_epoch, episode_per_train, logger,
         gradient_step, reward_metric
     )
     val_result = test_episode(
@@ -47,6 +47,7 @@ def imitation_trainer(
         gradient_step, reward_metric
     )
 
+    policy.eval()
     with torch.no_grad():
         losses = policy.update(0, val_collector.buffer, val=True)
         for k in losses.keys():
@@ -68,11 +69,13 @@ def imitation_trainer(
                 logger.log_update_data(losses, gradient_step)
                 t.set_postfix(**data)
         # train
+        train_collector.buffer.reset()
         train_result = test_episode(
             policy, train_collector, test_fn, epoch, episode_per_train, logger,
             gradient_step, reward_metric
         )
         # val
+        policy.eval()
         with torch.no_grad():
             losses = policy.update(0, val_collector.buffer, val=True)
             for k in losses.keys():

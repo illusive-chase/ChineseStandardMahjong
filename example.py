@@ -40,20 +40,25 @@ def imitation_test(args):
     print('EPS: {:.1f}'.format(eps / (time.time() - start)))
 
 def imitator_test(args):
+    # OPE: 60
     env = IEnv('expert.pkl', False, args.seed)
     start = time.time()
+    count = 0
     for eps in range(500):
         print(eps)
         policy = lambda x:None
         obs = env.reset()
         done = False
         while not done:
+            env.render()
             obs, rew, done, info = env.step(policy(obs))
+            count += 1
         env.render()
     print('EPS: {:.1f}'.format(eps / (time.time() - start)))
+    print('OPE: {:.1f}'.format(count / eps))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, default=1)
     args = parser.parse_args()
-    imitation_test(args)
+    imitator_test(args)

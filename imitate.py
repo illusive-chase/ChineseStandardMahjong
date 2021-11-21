@@ -12,7 +12,7 @@ from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv, SubprocVectorEnv
 from tianshou.utils import TensorboardLogger
 from torch.utils.tensorboard import SummaryWriter
-from learning.model import resnet34 as resnet
+from learning.model import resnet18 as resnet
 
 
 
@@ -41,9 +41,9 @@ def train(args):
     envs = SubprocVectorEnv([lambda:IEnv(dataset, verbose=False, seed=args.seed + 1000 * i) for i in range(args.parallel)])
     val_envs = DummyVectorEnv([lambda:IEnv(dataset, verbose=False, seed=0)])
     network = resnet(use_bn=False)
-    policy = tianshou_imitation_policy(network, lr=args.learning_rate).to(device)
-    train_collector = Collector(policy, envs, VectorReplayBuffer(100000, args.parallel))
-    val_collector = Collector(policy, val_envs, VectorReplayBuffer(5000, 1))
+    policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay).to(device)
+    train_collector = Collector(policy, envs, VectorReplayBuffer(60000, args.parallel))
+    val_collector = Collector(policy, val_envs, VectorReplayBuffer(1000, 1))
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')
     logger = TensorboardLogger(writer, update_interval=5)
     with open(f'./{args.log_dir}/{args.exp_name}/args.txt', 'w') as f:
@@ -53,9 +53,9 @@ def train(args):
         train_collector,
         val_collector,
         max_epoch=args.num_epoch,
-        update_per_epoch=50,
-        episode_per_train=100,
-        batch_size=8196,
+        update_per_epoch=80,
+        episode_per_train=1000,
+        batch_size=256,
         save_fn=lambda p: torch.save(p.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
         logger=logger)
     return result, policy
@@ -71,7 +71,8 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--parallel', type=int, default=1)
     parser.add_argument('-cu', '--cuda', type=int, default=-1)
     parser.add_argument('-ne', '--num-epoch', type=int, default=1000)
-    parser.add_argument('-lr', '--learning-rate', type=float, default=1e-5)
+    parser.add_argument('-lr', '--learning-rate', type=float, default=1e-2)
+    parser.add_argument('-wd', '--weight-decay', type=float, default=0)
     parser.add_argument('--eval', action='store_true')
     args = parser.parse_args()
     if args.eval:

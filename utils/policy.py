@@ -39,6 +39,7 @@ class inference_policy:
         self.scores = list(map(int, match_lines[-1].split()[1:]))
         self.translate_fn = None
         self.last = None
+        self.count = 0
         for i in range(4):
             self.tile_wall[i] = match_lines[2+i].split()[3:]
         no_ignored = []
@@ -67,6 +68,7 @@ class inference_policy:
     def __call__(self, obs):
         players = obs[2].reshape(-1)
         mask = obs[1].reshape(players.shape[0], -1)
+        self.count += (mask.sum(1) > 1).sum() * 4 * 9 * 145 * 8 / 1024 / 1024
         lst = self.match_lines[self.idx].split()
         while lst[2] == 'Draw':
             self.last = None

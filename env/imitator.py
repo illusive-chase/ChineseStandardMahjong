@@ -31,7 +31,9 @@ class Imitator(Runner):
             idx = self.action_waiting_list.index(None)
             obs = self.vec_data.get_obs(idx, other=[])[0]
             self.action_waiting_list[idx] = self.other_policy(obs)
-            return {'obs': obs[0], 'gt_action': self.action_waiting_list[idx], 'mask': obs[1]}, np.asarray(0.0), np.asarray(False), {}
+            if obs[1].sum() > 1:
+                return {'obs': obs[0], 'gt_action': self.action_waiting_list[idx], 'mask': obs[1]}, np.asarray(0.0), np.asarray(False), {}
+            return self.step(None)
 
         real_action = [self.vec_data.realize(self.action_waiting_list[i]) for i in range(4)]
         try:
@@ -52,4 +54,6 @@ class Imitator(Runner):
                 self.action_waiting_list[i] = self.other_policy(self.vec_data.get_obs(i, other=[])[0])
         else:
             self.action_waiting_list[self.wait_to_play] = self.other_policy(obs)
-        return {'obs': obs[0], 'mask': obs[1], 'gt_action': self.action_waiting_list[self.wait_to_play]}, np.asarray(0.0), np.asarray(False), {}
+        if obs[1].sum() > 1:
+            return {'obs': obs[0], 'mask': obs[1], 'gt_action': self.action_waiting_list[self.wait_to_play]}, np.asarray(0.0), np.asarray(False), {}
+        return self.step(None)

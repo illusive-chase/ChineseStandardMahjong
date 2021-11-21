@@ -11,13 +11,17 @@ from tianshou.data import Batch, to_torch
 
 
 class tianshou_imitation_policy(nn.Module):
-    def __init__(self, network, lr):
+    def __init__(self, network, lr, weight_decay):
         super().__init__()
         self.observation_space = gym.spaces.Box(0, 1, shape=VecData.state_shape[1:], dtype=np.bool)
         self.action_space = gym.spaces.Discrete(VecData.action_shape[1])
         self.network = network
         self.device = 'cpu'
-        self.optim = torch.optim.Adam(network.parameters(), lr=lr)
+        weight_decay_list = (param for name, param in network.named_parameters() if name[-4:] != 'bias' and "bn" not in name)
+        no_decay_list = (param for name, param in network.named_parameters() if name[-4:] == 'bias' or "bn" in name)
+        parameters = [{'params': weight_decay_list},
+                      {'params': no_decay_list, 'weight_decay': 0.}]
+        self.optim = torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay)
         for m in network.modules():
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight)
