@@ -31,7 +31,7 @@ def imitation_trainer(
     resume_from_log: bool = False,
     reward_metric: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     logger: BaseLogger = LazyLogger(),
-) -> Dict[str, Union[float, str]]:
+):
 
     start_epoch, gradient_step = 0, 0
     if resume_from_log:
@@ -52,10 +52,12 @@ def imitation_trainer(
     policy.eval()
     with torch.no_grad():
         losses = policy.update(0, val_collector.buffer, val=True)
-        for k in losses.keys():
-            stat[k].add(losses[k])
-            losses[k] = stat[k].get()
-        print(losses)
+    for k in losses.keys():
+        stat[k].add(losses[k])
+        losses[k] = stat[k].get()
+    print(losses)
+    log_data = {f"update/{k}": v for k, v in losses.items()}
+    logger.write("update/gradient_step", gradient_step, log_data)
 
     for epoch in range(1 + start_epoch, 1 + max_epoch):
         policy.train()
@@ -80,14 +82,16 @@ def imitation_trainer(
         policy.eval()
         with torch.no_grad():
             losses = policy.update(0, val_collector.buffer, val=True)
-            for k in losses.keys():
-                stat[k].add(losses[k])
-                losses[k] = stat[k].get()
-            print(losses)
+        for k in losses.keys():
+            stat[k].add(losses[k])
+            losses[k] = stat[k].get()
+        print(losses)
+        log_data = {f"update/{k}": v for k, v in losses.items()}
+        logger.write("update/gradient_step", gradient_step, log_data)
         if save_fn:
             save_fn(policy)
         logger.save_data(epoch, 0, gradient_step, save_checkpoint_fn)
-    return gather_info(start_time, None, test_collector, None, None)
+
 
 
 def offline_trainer(
@@ -102,7 +106,7 @@ def offline_trainer(
     resume_from_log: bool = False,
     reward_metric: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     logger: BaseLogger = LazyLogger(),
-) -> Dict[str, Union[float, str]]:
+):
 
     start_epoch, gradient_step = 0, 0
     if resume_from_log:
@@ -113,10 +117,13 @@ def offline_trainer(
     policy.eval()
     with torch.no_grad():
         losses = policy.update(0, val_set, val=True)
-        for k in losses.keys():
-            stat[k].add(losses[k])
-            losses[k] = stat[k].get()
-        print(losses)
+    for k in losses.keys():
+        stat[k].add(losses[k])
+        losses[k] = stat[k].get()
+    best_losses = losses['val-loss']
+    print(losses)
+    log_data = {f"update/{k}": v for k, v in losses.items()}
+    logger.write("update/gradient_step", gradient_step, log_data)
 
     for epoch in range(1 + start_epoch, 1 + max_epoch):
         policy.train()
@@ -136,11 +143,14 @@ def offline_trainer(
         policy.eval()
         with torch.no_grad():
             losses = policy.update(0, val_set, val=True)
-            for k in losses.keys():
-                stat[k].add(losses[k])
-                losses[k] = stat[k].get()
-            print(losses)
-        if save_fn:
-            save_fn(policy)
+        for k in losses.keys():
+            stat[k].add(losses[k])
+            losses[k] = stat[k].get()
+        print(losses)
+        if best_losses > losses['val-loss']:
+            best_losses = losses['val-loss']
+            if save_fn:
+                save_fn(policy)
+        log_data = {f"update/{k}": v for k, v in losses.items()}
+        logger.write("update/gradient_step", gradient_step, log_data)
         logger.save_data(epoch, 0, gradient_step, save_checkpoint_fn)
-    return gather_info(start_time, None, test_collector, None, None)
