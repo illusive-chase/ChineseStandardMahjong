@@ -4,15 +4,12 @@ __all__ = ('wrapper_policy',)
 from utils.vec_data import VecData
 from torch import nn
 import torch
-import gym
 import numpy as np
 
 
 class wrapper_policy(nn.Module):
     def __init__(self, network):
         super().__init__()
-        self.observation_space = gym.spaces.Box(0, 1, shape=VecData.state_shape[1:], dtype=np.bool)
-        self.action_space = gym.spaces.Discrete(VecData.action_shape[1])
         self.network = network
         self.device = 'cpu'
 

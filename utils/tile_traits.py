@@ -30,13 +30,13 @@ class Pack:
 
 # pack: list[Pack], tile: list[str], flower: list[flower], pTileWall: list[str]
 class PlayerData:
-    def __init__(self, sync_info):
+    def __init__(self, sync_info, pseudo):
         self.pack = []
         self.tile = []
         self.flower = []
         self.pTileWall = []
         self.sync = sync_info is not None
-        self.__fhand = None
+        self.pseudo = pseudo
         if self.sync:
             sync_array, idx = sync_info
             self.__hand = sync_array[idx, 4:8, :34]
@@ -57,12 +57,16 @@ class PlayerData:
 
     def draw(self, tile_str):
         self.tile.append(tile_str)
-        if self.sync:
+        if (not self.pseudo) and self.sync:
             tile_t = self.str2tile[tile_str]
             self.__hand[self.__fhand[tile_t], tile_t] = 1
             self.__fhand[tile_t] += 1
     
     def play(self, tile_str):
+        if self.pseudo:
+            self.tile.pop(-1)
+            return True
+
         if tile_str not in self.tile:
             return False
         self.tile.remove(tile_str)
@@ -76,6 +80,9 @@ class PlayerData:
         return True
 
     def angang(self, tile_str, offer):
+        if self.pseudo:
+            self.tile = self.tile[:-4]
+            return True
         if self.tile.count(tile_str) < 4:
             return False
         for _ in range(4):
@@ -89,6 +96,17 @@ class PlayerData:
         return True
 
     def bugang(self, tile_str):
+        if self.pseudo:
+            self.tile.pop(-1)
+            for i, pack in enumerate(self.pack):
+                if pack.type == "PENG" and pack.tile == tile_str:
+                    self.pack[i] = Pack("GANG", pack.tile, pack.offer)
+                    if self.sync:
+                        tile_t = self.str2tile[tile_str]
+                        self.__gang[tile_t] = 1
+                        self.__peng[tile_t] = 0
+                    return True
+            raise ValueError
         if tile_str not in self.tile:
             return False
         for i, pack in enumerate(self.pack):
@@ -105,6 +123,13 @@ class PlayerData:
         return False
 
     def gang(self, tile_str, offer):
+        if self.pseudo:
+            self.pack.append(Pack("GANG", tile_str, offer))
+            self.tile = self.tile[:-3]
+            if self.sync:
+                tile_t = self.str2tile[tile_str]
+                self.__gang[tile_t] = 1
+            return True
         if self.tile.count(tile_str) < 3:
             return False
         self.pack.append(Pack("GANG", tile_str, offer))
@@ -118,6 +143,13 @@ class PlayerData:
         return True
 
     def peng(self, tile_str, offer):
+        if self.pseudo:
+            self.pack.append(Pack("PENG", tile_str, offer))
+            self.tile = self.tile[:-2]
+            if self.sync:
+                tile_t = self.str2tile[tile_str]
+                self.__peng[tile_t] = 1
+            return True
         if self.tile.count(tile_str) < 2:
             return False
         for _ in range(2):
@@ -133,9 +165,12 @@ class PlayerData:
     def chi(self, mid_tile_str, tile_str):
         c = mid_tile_str[0] + chr(ord(mid_tile_str[1]) - 1)
         for i in [-1, 0, 1]:
-            if c not in self.tile:
-                return False
-            self.tile.remove(c)
+            if self.pseudo:
+                self.tile.pop(-1)
+            else:
+                if c not in self.tile:
+                    return False
+                self.tile.remove(c)
             c = c[0] + chr(ord(c[1]) + 1)
         self.lastOp = "CHI"
         self.tileCHI = mid_tile_str
@@ -144,8 +179,9 @@ class PlayerData:
             tile_t = self.str2tile[mid_tile_str]
             self.__chi[self.__fchi[tile_t], tile_t] = 1
             self.__fchi[tile_t] += 1
-            self.__fhand[tile_t-1:tile_t+2] -= 1
-            self.__hand[self.__fhand[tile_t-1], tile_t-1] = 0
-            self.__hand[self.__fhand[tile_t], tile_t] = 0
-            self.__hand[self.__fhand[tile_t+1], tile_t+1] = 0
+            if not self.pseudo:
+                self.__fhand[tile_t-1:tile_t+2] -= 1
+                self.__hand[self.__fhand[tile_t-1], tile_t-1] = 0
+                self.__hand[self.__fhand[tile_t], tile_t] = 0
+                self.__hand[self.__fhand[tile_t+1], tile_t+1] = 0
         return True

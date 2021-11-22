@@ -3,7 +3,7 @@
 __all__ = ('Bot',)
 
 
-from utils.vec_data import VecData, Pack, PlayerData
+from utils.vec_data import VecData
 from MahjongGB import MahjongFanCalculator, MahjongShanten
 import json
 
@@ -11,7 +11,6 @@ import json
 class Bot:
 
     state_shape = VecData.state_shape
-    extra_shape = VecData.extra_shape
     action_shape = VecData.action_shape
 
     def __init__(self):
@@ -22,10 +21,6 @@ class Bot:
         _, id, quan = requests[0].split(' ')
         requests = requests[1:]
 
-        # playerData: list[PlayerData]
-        self.playerData = [None] * 4
-        for i in range(4):
-            self.playerData[i] = PlayerData([], [], [], [])
         self.lastTile = ''
         self.lastOp = ''
 
@@ -54,30 +49,16 @@ class Bot:
         # 4-7:玩家打出牌后，通知所有玩家
         # 8-12:玩家杠牌，通知所有玩家
 
-        # quan: int
+        self.wait_to_play = None
+
         self.quan = int(quan)
         self.id = int(id)
         self.other = [i for i in range(4) if i != self.id]
-        # tileWall: list[str]
-        # self.shownTile: dict[str:int]
-        self.shownTile = {}
-        self.str2tile = {}
 
         self.wait_to_play = None
 
-        for k in "WBT":
-            for i in range(1, 10):
-                self.shownTile[k + str(i)] = 0
-        for i in range(1, 5):
-            self.shownTile["F" + str(i)] = 0
-        for i in range(1, 4):
-            self.shownTile["J" + str(i)] = 0
-
-        self.tile2str = list(self.shownTile.keys())
-        for idx, tile in enumerate(self.tile2str):
-            self.str2tile[tile] = idx
-
-        self.vec_data = VecData(self.shownTile, self.playerData, self.str2tile, self.tile2str, self.quan, self.other)
+        self.vec_data = VecData(self.quan, self.other)
+        self.playerData, self.shownTile, self.str2tile, self.tile2str = self.vec_data.connect()
         self.canHu = 0
         
 
@@ -98,7 +79,7 @@ class Bot:
         #                  |              |      |
         #                  -----------------------
 
-        return self.vec_data.get_obs([self.id])[0]
+        return self.vec_data.get_obs(self.id, other=[])[0]
 
 
     def playerError(self, player: int, code: str):
@@ -106,14 +87,21 @@ class Bot:
 
     def checkHu(self, player: int, re: int):
         if re == -1:
+            shanten = MahjongShanten(
+                hand = tuple(self.playerData[player].tile),
+                pack = tuple(v.as_tuple(player) for v in self.playerData[player].pack)
+            )
+            if shanten > 0:
+                return 0
+
             try:
                 fan_table = MahjongFanCalculator(
                     hand = tuple(self.playerData[player].tile),
-                    pack = tuple(v.as_tuple() for v in self.playerData[player].pack),
+                    pack = tuple(v.as_tuple(player) for v in self.playerData[player].pack),
                     winTile = self.lastTile,
                     flowerCount = len(self.playerData[player].flower),
                     isSelfDrawn = self.roundStage == player,
-                    is4thTile = self.shownTile[self.lastTile] == 3,
+                    is4thTile = self.shownTile[self.str2tile[self.lastTile]] == 3,
                     isAboutKong = self.lastBUGANG or self.lastANGANG or self.currGANG,
                     isWallLast = self.playerData[(self.roundStage + 1) % 4].pTileWall == [],
                     seatWind = player,
@@ -134,13 +122,15 @@ class Bot:
             self.playerError(player, "诈胡")
         if self.verbose:
             try:
+                hand = tuple(self.playerData[player].tile)
+                hand = hand if self.roundStage != player else hand[:-1]
                 fan_table = MahjongFanCalculator(
-                    hand = tuple(self.playerData[player].tile),
-                    pack = tuple(p.as_tuple() for p in self.playerData[player].pack),
+                    hand = hand,
+                    pack = tuple(p.as_tuple(player) for p in self.playerData[player].pack),
                     winTile = self.lastTile,
                     flowerCount = len(self.playerData[player].flower),
                     isSelfDrawn = self.roundStage == player,
-                    is4thTile = self.shownTile[self.lastTile] == 3,
+                    is4thTile = self.shownTile[self.str2tile[self.lastTile]] == 3,
                     isAboutKong = self.lastBUGANG or self.lastANGANG or self.currGANG,
                     isWallLast = self.playerData[(self.roundStage + 1) % 4].pTileWall == [],
                     seatWind = player,
@@ -181,7 +171,7 @@ class Bot:
                     self.rew[i] = -(8 + re)
             else:
                 if i == player:
-                    self.rew[i] = 3 * (8 + re)
+                    self.rew[i] = 3 * 8 + re
                 elif self.roundStage == i + 4:
                     self.rew[i] = -(8 + re)
                 elif self.roundStage == i + 8 and (self.lastBUGANG or self.lastANGANG):
@@ -202,49 +192,30 @@ class Bot:
 
         if len(outputList) == 1:
             if outputList[0] == "HU":
-                self.checkHu(player, self.canHu[player])
+                self.checkHu(player, self.canHu)
         elif len(outputList) == 2:
             self.lastTile = outputList[1]
             if outputList[0] == "PLAY":
-                if player != self.id:
-                    self.playerData[player].tile.pop(-1)
-                    self.lastOp = "PLAY"
-                    self.roundStage += 4
-                    return
-                if self.lastTile in self.playerData[player].tile:
-                    self.playerData[player].tile.remove(self.lastTile)
+                if self.playerData[player].play(self.lastTile):
                     self.lastOp = "PLAY"
                     self.roundStage += 4
                     return
             elif outputList[0] == "GANG":
                 if self.playerData[player].pTileWall == [] or self.playerData[(player + 1) % 4].pTileWall == []:
                     self.playerError(player, "终局杠牌")
-                if player != self.id:
-                    for i in range(4):
-                        self.playerData[player].tile.pop(-1)
-                    self.playerData[player].pack.append(Pack("GANG", '??', player))
-                else:
-                    for i in range(4):
-                        if self.lastTile not in self.playerData[player].tile:
-                            self.playerError(player, "无牌暗杠")
-                        self.playerData[player].tile.remove(self.lastTile)
-                    self.playerData[player].pack.append(Pack("GANG", self.lastTile, player, isANGANG=True))
-                self.lastOp = "GANG"
-                self.currANGANG = True
-                self.currGANG = False
-                self.lastGANG = False
-                self.currBUGANG = False
-                self.lastBUGANG = False
-                self.roundStage = player + 8
-                return
+                if self.playerData[player].angang(self.lastTile, player):
+                    self.lastOp = "GANG"
+                    self.currANGANG = True
+                    self.currGANG = False
+                    self.lastGANG = False
+                    self.currBUGANG = False
+                    self.lastBUGANG = False
+                    self.roundStage = player + 8
+                    return
             elif outputList[0] == "BUGANG":
-                for i, pack in enumerate(self.playerData[player].pack):
-                    if pack.type == "PENG" and pack.tile == self.lastTile:
-                        self.playerData[player].pack[i] = Pack("GANG", pack.tile, pack.offer)
-                        if self.lastTile not in self.playerData[player].tile:
-                            self.playerError(player, "无补杠对应刻子")
-                        self.playerData[player].tile.remove(self.lastTile)
-                        self.shownTile[self.lastTile] = 4
+                if self.playerData[player].bugang(self.lastTile):
+                    for i, pack in enumerate(self.playerData[player].pack):
+                        self.vec_data.show(self.lastTile, 1)
                         self.lastOp = "BUGANG"
                         self.currBUGANG = True
                         self.currANGANG = False
@@ -259,56 +230,37 @@ class Bot:
 
     def checkInputPLAY1(self, response: str, player: int):
         if response == "HU":
-            self.checkHu(player, self.canHu[player])
+            assert player == self.id
+            self.checkHu(player, self.canHu)
 
     def checkInputPLAY2(self, response: str, player: int):
         outputList = response.split(' ')
         if response == "PASS":
             return False
         elif response == "GANG":
-            if player != self.id:
-                for i in range(3):
-                    self.playerData[player].tile.pop(-1)
-            else:
-                for i in range(3):
-                    if self.lastTile not in self.playerData[player].tile:
-                        self.playerError(player, "无刻子杠牌")
-                    self.playerData[player].tile.remove(self.lastTile)
-            self.shownTile[self.lastTile] = 4
-            self.lastOp = "GANG"
-            self.currGANG = True
-            self.currBUGANG = False
-            self.currANGANG = False
-            self.lastGANG = False
-            self.lastBUGANG = False
-            self.playerData[player].pack.append(Pack("GANG", self.lastTile, self.roundStage % 4))
-            self.roundStage = player + 8
-            return True
+            if self.playerData[player].gang(self.lastTile, self.roundStage % 4):
+                self.vec_data.show(self.lastTile, 4)
+                self.lastOp = "GANG"
+                self.currGANG = True
+                self.currBUGANG = False
+                self.currANGANG = False
+                self.lastGANG = False
+                self.lastBUGANG = False
+                self.roundStage = player + 8
+                return True
         elif len(outputList) == 2:
             if outputList[0] == "PENG":
-                if player != self.id:
-                    for i in range(3):
-                        self.playerData[player].tile.pop(-1)
-                else:
-                    for i in range(2):
-                        if self.lastTile not in self.playerData[player].tile:
-                            self.playerError(player, "无对子碰牌")
-                        self.playerData[player].tile.remove(self.lastTile)
-                self.shownTile[self.lastTile] += 3
-                self.lastOp = "PENG"
-                self.playerData[player].pack.append(Pack("PENG", self.lastTile, self.roundStage % 4))
-                self.lastTile = outputList[1]
-                if player != self.id:
-                    self.playerData[player].tile.pop(-1)
-                else:
-                    if self.wait_to_play:
-                        assert self.lastTile == '??' and player == self.wait_to_play
+                if self.playerData[player].peng(self.lastTile, self.roundStage % 4):
+                    self.vec_data.show(self.lastTile, 3)
+                    self.lastOp = "PENG"
+                    self.lastTile = outputList[1]
+                    if self.lastTile == '??':
+                        self.wait_to_play = player
                     else:
-                        if self.lastTile not in self.playerData[player].tile:
+                        if not self.playerData[player].play(self.lastTile):
                             self.playerError(player, "打出非手牌 " + self.lastTile)
-                        self.playerData[player].tile.remove(self.lastTile)
-                self.roundStage = 4 + player
-                return True
+                    self.roundStage = 4 + player
+                    return True
         if len(outputList) != 3:
             self.playerError(player, "非法操作 " + response)
         return False
@@ -318,46 +270,29 @@ class Bot:
         if len(outputList) == 3:
             if outputList[0] != "CHI" or (self.roundStage - player) % 4 != 3:
                 self.playerError(player, "非法操作 " + response)
-            if player != self.id:
-                self.playerData[player].tile.pop(-1)
-                self.playerData[player].tile.pop(-1)
-                c = outputList[1]
-                c = c[0] + chr(ord(c[1]) - 1)
-                for i in [-1, 0, 1]:
-                    self.shownTile[c] += 1
-                    c = c[0] + chr(ord(c[1]) + 1)
-            else:
-                self.playerData[player].tile.append(self.lastTile)
-                c = outputList[1]
-                if c[0] not in 'WBT' or c[0] != self.lastTile[0] or abs(ord(c[1]) - ord(self.lastTile[1])) > 1:
-                    self.playerError(player, "吃非数字牌或数字不匹配")
-                c = c[0] + chr(ord(c[1]) - 1)
-                for i in [-1, 0, 1]:
-                    self.shownTile[c] += 1
-                    if c not in self.playerData[player].tile:
-                        self.playerError(player, "无搭子吃牌")
-                    self.playerData[player].tile.remove(c)
-                    c = c[0] + chr(ord(c[1]) + 1)
-            self.lastOp = "CHI"
-            self.tileCHI = outputList[1]
-            self.playerData[player].pack.append(Pack("CHI", self.tileCHI, ord(self.lastTile[1]) - ord(outputList[1][1]) + 1))
-            self.lastTile = outputList[2]
-            if player != self.id:
-                self.playerData[player].tile.pop(-1)
-            else:
-                if self.wait_to_play:
-                    assert self.lastTile == '??' and player == self.wait_to_play
+            self.playerData[player].draw(self.lastTile)
+            c = outputList[1]
+            if c[0] not in 'WBT' or c[0] != self.lastTile[0] or abs(ord(c[1]) - ord(self.lastTile[1])) > 1:
+                self.playerError(player, "吃非数字牌或数字不匹配")
+            if self.playerData[player].chi(c, self.lastTile):
+                tile_t = self.str2tile[c]
+                self.vec_data.show_range(tile_t - 1, tile_t + 2, 1)
+                self.lastOp = "CHI"
+                self.tileCHI = outputList[1]
+                self.lastTile = outputList[2]
+                if self.lastTile == '??':
+                    self.wait_to_play = player
                 else:
-                    if self.lastTile not in self.playerData[player].tile:
+                    if not self.playerData[player].play(self.lastTile):
                         self.playerError(player, "打出非手牌 " + self.lastTile)
-                    self.playerData[player].tile.remove(self.lastTile)
-            self.roundStage = 4 + player
-            return True
+                self.roundStage = 4 + player
+                return True
         return False
 
     def checkInputGANG(self, response: str, player: int):
         if self.lastBUGANG and self.roundStage % 4 != player and response == "HU":
-            self.checkHu(player, self.canHu[player])
+            assert player == self.id
+            self.checkHu(player, self.canHu)
         if response == "PASS":
             return
         self.playerError(player, "非法操作 " + response)
@@ -374,19 +309,21 @@ class Bot:
 
 
     def roundOutput(self, request: str):
-        if self.wait_to_play:
-            self.vec_data.sync(self.shanten, idxs=[self.wait_to_play])
-            self.vec_data.check_able_play(self.wait_to_play)
+        if self.wait_to_play is not None:
+            self.vec_data.sync(idxs=[self.wait_to_play])
+            self.vec_data.check_able_play(self.wait_to_play, False)
             return
+        
         post_fn = lambda :None
         request = request.split(' ')
         if self.roundStage == -1:
             hua = [int(i) for i in request[1:5]]
-            for i in range(4):
-                while len(self.playerData[i].tile) < 13 + hua[i]:
-                    nextTile = self.playerData[i].pTileWall.pop(-1)
-                    self.playerData[i].tile.append(nextTile)
-            self.playerData[self.id].tile = request[5:18]
+            for i in range(13):
+                for j in self.other:
+                    nextTile = self.playerData[j].pTileWall.pop(-1)
+                    self.playerData[j].draw(nextTile)
+                self.playerData[self.id].pTileWall.pop(-1)
+                self.playerData[self.id].draw(request[5 + i])
             self.playerData[0].flower = request[18:18+hua[0]]
             self.playerData[1].flower = request[18+hua[0]:18+hua[1]]
             self.playerData[2].flower = request[18+hua[1]:18+hua[2]]
@@ -410,7 +347,7 @@ class Bot:
                 self.lastOp = "DRAW"
                 if self.roundStage % 4 == self.id:
                     self.canHu = self.checkHu(self.id, -1)
-                    post_fn = lambda : self.playerData[self.roundStage].tile.append(self.lastTile)
+                post_fn = lambda : self.playerData[self.roundStage].draw(self.lastTile)
         elif self.roundStage >= 4 and self.roundStage < 8:
             if self.playerData[(self.lastRoundStage + 1) % 4].pTileWall == [] and self.lastOp in ["CHI", "PENG"]:
                 self.playerError(self.roundStage % 4, "终局吃碰 " + self.lastOp)
@@ -424,20 +361,14 @@ class Bot:
                 if self.roundStage % 4 != self.id:
                     self.canHu = self.checkHu(self.id, -1)
             assert request[:2] == ['3', str(self.roundStage % 4)] and request[2] in ["GANG", "BUGANG"]
-        shanten = [MahjongShanten(
-            hand = tuple(self.playerData[i].tile),
-            pack = tuple(v.as_tuple() for v in self.playerData[i].pack))
-            if i == self.id else 0
-            for i in range(4)
-        ]
         post_fn()
-        self.vec_data.sync(shanten, [self.id])
+        self.vec_data.sync()
         if self.canHu:
             self.vec_data.enable_hu(self.id)
         self.vec_data.enable_pass()
         if self.lastOp == "DRAW" and self.roundStage % 4 == self.id:
             self.vec_data.check_able_play(self.roundStage % 4)
-        if self.roundStage >= 4 and self.roundStage < 8:
+        if self.roundStage >= 4 and self.roundStage < 8 and self.roundStage % 4 == self.id:
             self.vec_data.check_able_ming(self.roundStage % 4, self.lastTile)
         
 
@@ -472,11 +403,11 @@ class Bot:
                     b_pass = not self.checkInputPLAY3(response[i], i)
             if b_pass:
                 self.roundStage = (self.roundStage + 1) % 4
-                if self.wait_to_play is not None:
-                    self.shownTile[self.lastTile] += 1
+                if self.wait_to_play is None:
+                    self.vec_data.show(self.lastTile, 1)
         else:
             for i in range(4):
-                self.checkInputGANG(response[i], (self.roundStage + i) % 4)
+                self.checkInputGANG(response[(self.roundStage + i) % 4], (self.roundStage + i) % 4)
             self.roundStage -= 8
 
 
@@ -490,10 +421,9 @@ class Bot:
             obs = self.get_obs(all_requests, all_responses)
             action = self.vec_data.realize(policy(obs))
             if '??' in action:
-                self.wait_to_play = True
                 self.roundInput([action if i == self.id else 'PASS' for i in range(4)])
                 self.roundOutput(None)
-                obs = self.vec_data.get_obs([self.id])[0]
+                obs = self.vec_data.get_obs(self.id, other=[])[0]
                 action = self.vec_data.realize(policy(obs))
         print(json.dumps({
             "response": action,

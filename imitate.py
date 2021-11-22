@@ -1,5 +1,6 @@
 from utils.paired_data import PairedDataset
 from env.runner import Runner as REnv
+from env.bot import Bot
 from learning.imitation import tianshou_imitation_policy
 from learning.wrapper import wrapper_policy
 from learning.imitation_trainer import offline_trainer
@@ -9,7 +10,6 @@ import time
 from tianshou.utils import TensorboardLogger
 from torch.utils.tensorboard import SummaryWriter
 from learning.model import *
-
 
 
 def evaluate(args):
@@ -36,7 +36,7 @@ def train(args):
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
     dataset = PairedDataset()
     with open(args.file, 'rb') as f:
-        dataset.load(f, 1000000)
+        dataset.load(f)
     train_set, val_set = dataset.split(0.01)
     network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm)
     policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay).to(device)

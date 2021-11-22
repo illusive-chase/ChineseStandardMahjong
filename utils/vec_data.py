@@ -23,12 +23,12 @@ class VecData:
     state_shape = (4, 145, 36)
     action_shape = (4, END)
 
-    def __init__(self, quan, no_obs_players):
+    def __init__(self, quan, no_obs_players=[]):
         self.obs = np.zeros(self.state_shape, dtype=np.bool)
         self.str2tile = str2tile
         self.tile2str = tile2str
         self.mask = np.zeros(self.action_shape, dtype=np.bool)
-        self.players = [PlayerData(None if i in no_obs_players else (self.obs, i)) for i in range(4)]
+        self.players = [PlayerData((self.obs, i), (i in no_obs_players)) for i in range(4)]
         self.fshown = np.zeros(34, dtype=np.uint8)
         self.shown = np.zeros((4, 34), dtype=np.bool)
         self.no_obs_players = no_obs_players
