@@ -368,7 +368,7 @@ class Bot:
         self.vec_data.enable_pass()
         if self.lastOp == "DRAW" and self.roundStage % 4 == self.id:
             self.vec_data.check_able_play(self.roundStage % 4)
-        if self.roundStage >= 4 and self.roundStage < 8 and self.roundStage % 4 == self.id:
+        if self.roundStage >= 4 and self.roundStage < 8:
             self.vec_data.check_able_ming(self.roundStage % 4, self.lastTile)
         
 
