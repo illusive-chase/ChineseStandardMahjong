@@ -424,7 +424,9 @@ class Bot:
                 self.roundInput([action if i == self.id else 'PASS' for i in range(4)])
                 self.roundOutput(None)
                 obs = self.vec_data.get_obs(self.id, other=[])[0]
-                action = self.vec_data.realize(policy(obs))
+                extra_action = self.vec_data.realize(policy(obs))
+                assert extra_action[:5] == 'PLAY '
+                action = action.replace('??', extra_action[5:])
         print(json.dumps({
             "response": action,
             "debug": "",
