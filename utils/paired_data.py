@@ -4,6 +4,7 @@ __all__ = ('PairedDataset',)
 
 import numpy as np
 from numba import njit
+import tqdm
 
 # item: 1 + 34 + 14 + 4 x (4 + 28) + 39 = 216
 
@@ -54,12 +55,12 @@ def encode(obs, action, mask, dest):
 def decode(src, obs, act, mask):
     act[:] = src[0]
     flat = np.zeros(34, dtype=np.uint8)
-    for i in range(1, 4):
+    for i in range(1, 5):
         obs[0:i, :34] |= src[1:35] == i
     for i in range(35, 49):
         if src[i] > 0:
             flat[src[i] - 1] += 1
-    for i in range(1, 4):
+    for i in range(1, 5):
         obs[4:4+i, :34] |= flat == i
     for i in range(4):
         flat[:] = 0
@@ -78,15 +79,15 @@ def decode(src, obs, act, mask):
             else:
                 assert pack_type == 3 and i == 0
                 obs[32, t] = True
-        for j in range(1, 4):
-            obs[4:4+j, :34] |= flat == i
+        for j in range(1, 5):
+            obs[8+i*4:8+i*4+j, :34] |= flat == j
         for j in range(28):
             history = src[49 + i * 32 + 4 + j]
             if history > 0:
-                obs[33 + 28 * i + j] = history - 1
+                obs[33 + 28 * i + j, history - 1] = 1
     for i in range(177, 216):
         if src[i] > 0:
-            mask[src[i]] = True
+            mask[src[i] - 1] = True
 
 
 class PairedDataset:
@@ -114,15 +115,12 @@ class PairedDataset:
         for page in self.pages:
             np.save(f, page)
 
-    def load(self, f):
-        self.size = int(np.load(f))
-        while True:
-            try:
+    def load(self, f, max_size=np.inf):
+        self.size = min(max_size, int(np.load(f)))
+        with tqdm.trange((self.size + self.page_size - 1) // self.page_size, desc=f"Loading PairedDataset", dynamic_ncols=True, ascii=True) as t:
+            for _ in t:
                 page = np.load(f)
-            except EOFError:
-                break
-            self.pages.append(page)
-        self.pages = np.random.shuffle(self.pages[:-1]) + self.pages[-1:]
+                self.pages.append(page)
         
 
     def reset(self):
@@ -137,20 +135,21 @@ class PairedDataset:
             return self.full
         obs = np.zeros((batch_size, 145, 36), dtype=np.bool)
         mask = np.zeros((batch_size, 235), dtype=np.bool)
-        act = np.zeros((batch_size,), dtype=np.uint8)
+        act = np.zeros((batch_size, 1), dtype=np.uint8)
         indices = np.random.choice(self.size, batch_size)
-        for indice in indices:
+        for idx, indice in enumerate(indices):
             item = self.get(indice)
-            decode(item, obs, act, mask)
-        return {'obs':obs, 'mask':mask, 'gt_action':act}, indices
+            decode(item, obs[idx], act[idx], mask[idx])
+        return {'obs':obs, 'mask':mask, 'gt_action':act[:, 0]}, indices
 
     def split(self, val_ratio):
+        np.random.shuffle(self.pages[:-1])
         train_set, val_set = PairedDataset(), PairedDataset()
         train_set.size = int(self.size / self.page_size * (1 - val_ratio)) * self.page_size
         val_set.size = self.size - train_set.size
         train_set.pages = self.pages[:train_set.size // self.page_size]
         val_set.pages = self.pages[train_set.size // self.page_size:]
+        return train_set, val_set
         
         
 
-        

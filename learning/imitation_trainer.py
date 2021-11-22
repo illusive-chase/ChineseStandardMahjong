@@ -96,7 +96,6 @@ def offline_trainer(
     val_set: PairedDataset,
     max_epoch: int,
     update_per_epoch: int,
-    episode_per_train: int,
     batch_size: int,
     save_fn: Optional[Callable[[BasePolicy], None]] = None,
     save_checkpoint_fn: Optional[Callable[[int, int, int], None]] = None,

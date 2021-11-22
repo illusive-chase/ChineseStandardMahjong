@@ -15,7 +15,7 @@ from learning.model import resnet18 as resnet
 def eval(args):
     torch.set_num_threads(1)
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
-    network = resnet(use_bn=False)
+    network = resnet(use_bn=args.batch_norm)
     policy = wrapper_policy(network).to(device)
     policy.load(f'./{args.log_dir}/{args.exp_name}/policy.pth')
     policy.eval()
@@ -35,22 +35,21 @@ def train(args):
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
     dataset = PairedDataset()
     with open(args.file, 'rb') as f:
-        dataset.load(f)
-    train_set, val_set = dataset.split(5e-3)
-    network = resnet(use_bn=False)
+        dataset.load(f, 1000000)
+    train_set, val_set = dataset.split(0.01)
+    network = resnet(use_bn=args.batch_norm)
     policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay).to(device)
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')
     logger = TensorboardLogger(writer, update_interval=5)
     with open(f'./{args.log_dir}/{args.exp_name}/args.txt', 'w') as f:
         f.write(str(args))
-    result = imitation_trainer(
+    result = offline_trainer(
         policy,
         train_set,
         val_set,
         max_epoch=args.num_epoch,
-        update_per_epoch=800,
-        episode_per_train=10000,
-        batch_size=512,
+        update_per_epoch=500,
+        batch_size=args.batch_size,
         save_fn=lambda p: torch.save(p.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
         logger=logger)
     return result, policy
@@ -60,13 +59,15 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--seed', type=int, default=1)
-    parser.add_argument('-f', '--file', type=str, default='paired.pkl')
+    parser.add_argument('-f', '--file', type=str, default='pair.pkl')
     parser.add_argument('-d', '--log-dir', required=True, type=str)
     parser.add_argument('-e', '--exp-name', required=True, type=str)
     parser.add_argument('-cu', '--cuda', type=int, default=-1)
     parser.add_argument('-ne', '--num-epoch', type=int, default=1000)
     parser.add_argument('-lr', '--learning-rate', type=float, default=1e-2)
     parser.add_argument('-wd', '--weight-decay', type=float, default=0)
+    parser.add_argument('-bs', '--batch-size', type=int, default=512)
+    parser.add_argument('-bn', '--batch-norm', action='store_true')
     parser.add_argument('--eval', action='store_true')
     args = parser.parse_args()
     if args.eval:

@@ -45,6 +45,8 @@ class tianshou_imitation_policy(nn.Module):
 
     def update(self, sample_size, buffer, val=False):
         batch, indices = buffer.sample(sample_size)
+        if type(batch) is dict:
+            batch = Batch(obs=batch)
         obs = to_torch(batch.obs.obs, device=self.device).float().view(-1, 145, 4, 9)
         mask = (~to_torch(batch.obs.mask, device=self.device)).float()
         gt_action = to_torch(batch.obs.gt_action, device=self.device).long()
