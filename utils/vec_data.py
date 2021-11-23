@@ -30,7 +30,7 @@ class VecData:
         self.mask = np.zeros(self.action_shape, dtype=np.bool)
         self.players = [PlayerData((self.obs, i), (i in no_obs_players)) for i in range(4)]
         self.fshown = np.zeros(34, dtype=np.uint8)
-        self.shown = self.obs[0:4, :34]
+        self.shown = self.obs[0, 0:4, :34]
         self.no_obs_players = no_obs_players
         self.quan = quan
 
@@ -144,6 +144,8 @@ class VecData:
         gang_pack = self.obs[:, 28:32, :].reshape(4, 4, 36)
 
         for a in idxs:
+            if a != 0:
+                self.obs[a, 0:4, :] = self.obs[0, 0:4, :]
             if a in self.no_obs_players:
                 continue
             chi_pack[a, 1] = chi_pack[(a + 1) % 4, 0]
