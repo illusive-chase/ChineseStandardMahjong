@@ -13,6 +13,7 @@ from learning.model import *
 
 
 def evaluate(args):
+    torch.manual_seed(args.seed)
     torch.set_num_threads(1)
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
     network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm)
@@ -34,10 +35,11 @@ def train(args):
     torch.manual_seed(args.seed)
     torch.set_num_threads(1)
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
-    dataset = PairedDataset()
+    dataset = PairedDataset(args.aug)
     with open(args.file, 'rb') as f:
         dataset.load(f)
-    train_set, val_set = dataset.split(0.01)
+    train_set, val_set = dataset.split(0.001)
+    val_set.augmentation = 12
     network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm)
     policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay).to(device)
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')
@@ -68,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('-lr', '--learning-rate', type=float, default=1e-2)
     parser.add_argument('-wd', '--weight-decay', type=float, default=0)
     parser.add_argument('-bs', '--batch-size', type=int, default=512)
+    parser.add_argument('--aug', type=int, default=1)
     parser.add_argument('-bn', '--batch-norm', action='store_true')
     parser.add_argument('--resnet', type=int, choices=[18, 34, 50, 101, 152], default=18)
     parser.add_argument('--eval', action='store_true')

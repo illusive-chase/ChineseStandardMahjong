@@ -6,5 +6,6 @@
 !/env/
 !/requirements.txt
 !/scripts/
+!/test/
 !/README.md
 __pycache__/

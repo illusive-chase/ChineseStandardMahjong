@@ -4,17 +4,17 @@ __all__ = ('VecData',)
 
 
 import numpy as np
-from utils.tile_traits import PlayerData, str2tile, tile2str
+from utils.tile_traits import PlayerData, str2tile, tile2str, tile_augment
 
-PLAY_MASK = 0
-CHI_MASK = 34
-PENG_MASK = CHI_MASK+63
-GANG_MASK = PENG_MASK+34
-BUGANG_MASK = GANG_MASK+34
-ANGANG_MASK = BUGANG_MASK+34
-HU_MASK = ANGANG_MASK+34
-PASS_MASK = HU_MASK+1
-END = PASS_MASK+1
+PLAY_MASK = 0                 # 0
+CHI_MASK = 34                 # 34
+PENG_MASK = CHI_MASK+63       # 97
+GANG_MASK = PENG_MASK+34      # 131
+BUGANG_MASK = GANG_MASK+34    # 165
+ANGANG_MASK = BUGANG_MASK+34  # 199
+HU_MASK = ANGANG_MASK+34      # 233
+PASS_MASK = HU_MASK+1         # 234
+END = PASS_MASK+1             # 235
 assert END == 235
 
 
@@ -22,6 +22,8 @@ class VecData:
 
     state_shape = (4, 145, 36)
     action_shape = (4, END)
+    action_augment_table = None
+    tile_augment_table = None
 
     def __init__(self, quan, no_obs_players=[]):
         self.obs = np.zeros(self.state_shape, dtype=np.bool)
@@ -33,6 +35,29 @@ class VecData:
         self.shown = self.obs[0, 0:4, :34]
         self.no_obs_players = no_obs_players
         self.quan = quan
+
+    @classmethod
+    def _compile(self):
+        self.action_augment_table = np.zeros((12, 235), dtype=np.uint8)
+        self.tile_augment_table = np.zeros((12, 34), dtype=np.uint8)
+        for type in range(12):
+            tt = self.tile_augment_table[type]
+            at = self.action_augment_table[type]
+            for t in range(34):
+                tt[t] = tile_augment(t, type)
+                at[PLAY_MASK + t] = PLAY_MASK + tt[t]
+                at[PENG_MASK + t] = PENG_MASK + tt[t]
+                at[GANG_MASK + t] = GANG_MASK + tt[t]
+                at[BUGANG_MASK + t] = BUGANG_MASK + tt[t]
+                at[ANGANG_MASK + t] = ANGANG_MASK + tt[t]
+                at[HU_MASK] = HU_MASK
+                at[PASS_MASK] = PASS_MASK
+            for i in range(21):
+                for j in range(3):
+                    t = (i // 7) * 9 + (i % 7) + 1
+                    t = tile_augment(t, type)
+                    t = (t // 9) * 7 + (t % 9) - 1
+                    at[CHI_MASK + i * 3 + j] = CHI_MASK + t * 3 + j
 
     def connect(self):
         return self.players, self.fshown, self.str2tile, self.tile2str
@@ -173,3 +198,6 @@ class VecData:
             (self.obs[main], self.mask[main], np.asarray(main)),
             (self.obs[other], self.mask[other], np.asarray(other))
         )
+
+
+VecData._compile()

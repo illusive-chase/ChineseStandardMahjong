@@ -18,6 +18,7 @@
   + imitator.py: wrapped environment for imitation learning, see imitate.py
   + runner.py: wrapped environment for Mahjong, see scripts/example.py
 
+
 + utils
   + distribution.py: for utils.policy.random_policy, see utils/policy.py
   + match_data.py: dump actions of expert data for imitation learning, see scripts/preprocess.py
@@ -37,13 +38,20 @@
     + `python -m scripts.generate_pair match.pkl -o pair.pkl  `
   + imitate_example.py: examples of imitation learning with match data
     + `python -m scripts.imitate_example -f match.pkl -d train -e experiment1 `
+  + perf.py: evaluate performance of a certain model
+    + `python -m scripts.perf -p A.pth -cp B.pth -bn`
   + preprocess.py: generate match data from match log (old version)
     + `python -m scripts.preprocess data.txt -o match.pkl`
   + screen.py: not used
-  + test_paired_data.py: check whether the encoder and decoder in utils/paired_data.py work correctly
-    + `python -m scripts.test_paired_data match.pkl`
   + test.py: not used
   + train.py: not used
+
+
++ test
+  + test_paired_data.py: check whether the encoder and decoder in utils/paired_data.py work correctly
+    + `python -m test.test_paired_data match.pkl`
+  + test_augmentation.py: check whether the augmentation is correctly implemented
+    + `python -m test.test_augmentation pair.pkl`
 
 
 

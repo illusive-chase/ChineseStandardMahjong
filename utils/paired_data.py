@@ -5,8 +5,10 @@ __all__ = ('PairedDataset',)
 import numpy as np
 from numba import njit
 import tqdm
+from utils.vec_data import VecData
 
 # item: 1 + 34 + 14 + 4 x (4 + 28) + 39 = 216
+
 
 @njit
 def encode(obs, action, mask, dest):
@@ -90,53 +92,94 @@ def decode(src, obs, act, mask):
             mask[src[i] - 1] = True
 
 
+
+
+
 class PairedDataset:
 
-    def __init__(self):
+    action_augment_table = None
+    tile_augment_table = None
+
+    def __init__(self, augmentation=1):
         self.page_size = 16
         self.item_size = 216
+        self.augmentation = augmentation
+        assert 1 <= augmentation <= 12
         self.reset()
 
     def add(self, obs, act, mask):
         self.full = None
-        if self.size % self.page_size == 0:
+        if self.actual_size % self.page_size == 0:
             self.pages.append(np.zeros((self.page_size, self.item_size), dtype=np.uint8))
-        encode(obs, act, mask, self.pages[-1][self.size % self.page_size])
-        self.size += 1
+        encode(obs, act, mask, self.pages[-1][self.actual_size % self.page_size])
+        self.actual_size += 1
+
+    def size(self):
+        return self.actual_size * self.augmentation
 
     def get(self, idx):
-        assert idx < self.size
+        assert idx < self.actual_size * self.augmentation
+        aug_type = idx % self.augmentation
+        idx = idx // self.augmentation
         page_idx = idx // self.page_size
         page = self.pages[page_idx]
-        return page[idx % self.page_size]
+        return self.augment(page[idx % self.page_size], aug_type) if aug_type > 0 else page[idx % self.page_size]
 
     def dump(self, f):
-        np.save(f, np.asarray(self.size))
+        np.save(f, np.asarray(self.actual_size))
         for page in self.pages:
             np.save(f, page)
 
-    def load(self, f, max_size=np.inf):
-        self.size = min(max_size, int(np.load(f)))
-        with tqdm.trange((self.size + self.page_size - 1) // self.page_size, desc=f"Loading PairedDataset", dynamic_ncols=True, ascii=True) as t:
+    def load(self, f, max_size=2**31-1):
+        self.actual_size = min(max_size // self.augmentation, int(np.load(f)))
+        with tqdm.trange((self.actual_size + self.page_size - 1) // self.page_size, desc=f"Loading PairedDataset", dynamic_ncols=True, ascii=True) as t:
             for _ in t:
                 page = np.load(f)
                 self.pages.append(page)
         
+    @classmethod
+    def _compile(self):
+        obs = np.zeros((2, 145, 36), dtype=np.bool)
+        mask = np.zeros((2, 235), dtype=np.bool)
+        act = np.zeros((2, 1), dtype=np.uint8)
+        item = np.zeros(216, dtype=np.uint8)
+        try:
+            encode(obs[0], act[0, 0], mask[0], item)
+        except AssertionError:
+            pass
+        try:
+            decode(item, obs[0], act[0], mask[0])
+        except AssertionError:
+            pass
+        self.action_augment_table = np.zeros((12, 235 + 1), dtype=np.uint8)
+        self.tile_augment_table = np.zeros((12, 34 + 1), dtype=np.uint8)
+        self.action_augment_table[:, 1:] = VecData.action_augment_table + 1
+        self.tile_augment_table[:, 1:] = VecData.tile_augment_table + 1
+
+    @classmethod
+    def augment(self, item, aug_type):
+        ret = np.empty_like(item)
+        ret[0] = self.action_augment_table[aug_type, item[0] + 1] - 1
+        ret[1:49] = self.tile_augment_table[aug_type, item[1:49]]
+        ret[49:177] = (item[49:177] // 64) * 64 + self.tile_augment_table[aug_type, item[49:177] % 64]
+        ret[177:] = self.action_augment_table[aug_type, item[177:]]
+        return ret
+        
 
     def reset(self):
         self.pages = []
-        self.size = 0
+        self.actual_size = 0
         self.full = None
 
     def sample(self, batch_size):
         if batch_size == 0:
             if self.full is None:
-                self.full = self.sample(self.size)
+                self.full = self.sample(self.actual_size * self.augmentation)
             return self.full
         obs = np.zeros((batch_size, 145, 36), dtype=np.bool)
         mask = np.zeros((batch_size, 235), dtype=np.bool)
         act = np.zeros((batch_size, 1), dtype=np.uint8)
-        indices = np.random.choice(self.size, batch_size)
+        indices = np.random.choice(self.actual_size * self.augmentation, batch_size)
         for idx, indice in enumerate(indices):
             item = self.get(indice)
             decode(item, obs[idx], act[idx], mask[idx])
@@ -144,12 +187,13 @@ class PairedDataset:
 
     def split(self, val_ratio):
         np.random.shuffle(self.pages[:-1])
-        train_set, val_set = PairedDataset(), PairedDataset()
-        train_set.size = int(self.size / self.page_size * (1 - val_ratio)) * self.page_size
-        val_set.size = self.size - train_set.size
-        train_set.pages = self.pages[:train_set.size // self.page_size]
-        val_set.pages = self.pages[train_set.size // self.page_size:]
+        train_set, val_set = PairedDataset(self.augmentation), PairedDataset(self.augmentation)
+        train_set.actual_size = int(self.actual_size / self.page_size * (1 - val_ratio)) * self.page_size
+        val_set.actual_size = self.actual_size - train_set.actual_size
+        train_set.pages = self.pages[:train_set.actual_size // self.page_size]
+        val_set.pages = self.pages[train_set.actual_size // self.page_size:]
         return train_set, val_set
         
-        
 
+
+PairedDataset._compile()

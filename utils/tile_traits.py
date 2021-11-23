@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ('Pack', 'PlayerData', 'str2tile', 'tile2str')
+__all__ = ('Pack', 'PlayerData', 'str2tile', 'tile2str', 'tile_augment')
 
 import numpy as np
 
@@ -16,6 +16,16 @@ for i in range(1, 5):
 for i in range(1, 4):
     str2tile["J" + str(i)] = len(tile2str)
     tile2str.append("J" + str(i))
+
+def tile_augment(tile, aug_type):
+    if tile // 9 == 3:
+        return tile
+    if aug_type // 6 == 1:
+        # 123456789 to 987654321
+        tile = (tile // 9) * 9 + 8 - (tile % 9)
+    table = [list(map(int, x)) for x in ['012', '021', '102', '120', '201', '210']]
+    tile = table[aug_type % 6][tile // 9] * 9 + (tile % 9)
+    return tile
 
 
 # type: str, tile: str, offer: int

@@ -19,6 +19,6 @@ if __name__ == "__main__":
         while not done:
             pdataset.add(obs['obs'], obs['gt_action'], obs['mask'])
             obs, rew, done, info = env.step(None)
-        print(pdataset.size)
+        print(pdataset.size())
     with open(args.output, 'wb') as f:
         pdataset.dump(f)
