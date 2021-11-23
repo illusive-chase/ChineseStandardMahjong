@@ -65,6 +65,11 @@ class PlayerData:
     def play(self, tile_str):
         if self.pseudo:
             self.tile.pop(-1)
+            if self.sync:
+                tile_t = self.str2tile[tile_str]
+                for history in self.__history:
+                    history[self.__round, tile_t] = 1
+                self.__round += 1
             return True
 
         if tile_str not in self.tile:

@@ -30,7 +30,7 @@ class VecData:
         self.mask = np.zeros(self.action_shape, dtype=np.bool)
         self.players = [PlayerData((self.obs, i), (i in no_obs_players)) for i in range(4)]
         self.fshown = np.zeros(34, dtype=np.uint8)
-        self.shown = np.zeros((4, 34), dtype=np.bool)
+        self.shown = self.obs[0:4, :34]
         self.no_obs_players = no_obs_players
         self.quan = quan
 
@@ -171,5 +171,3 @@ class VecData:
             (self.obs[main], self.mask[main], np.asarray(main)),
             (self.obs[other], self.mask[other], np.asarray(other))
         )
-
-        
