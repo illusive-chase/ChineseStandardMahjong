@@ -1,6 +1,5 @@
 from utils.paired_data import PairedDataset
 from env.runner import Runner as REnv
-from env.bot import Bot
 from learning.imitation import tianshou_imitation_policy
 from learning.wrapper import wrapper_policy
 from learning.imitation_trainer import offline_trainer
@@ -41,7 +40,10 @@ def train(args):
     train_set, val_set = dataset.split(0.001)
     val_set.augmentation = 12
     network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
+    # network = Slider()
     policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay).to(device)
+    if args.path != '':
+        policy.load(args.path)
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')
     logger = TensorboardLogger(writer, update_interval=5)
     with open(f'./{args.log_dir}/{args.exp_name}/args.txt', 'w') as f:
@@ -65,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--file', type=str, default='pair.pkl')
     parser.add_argument('-d', '--log-dir', required=True, type=str)
     parser.add_argument('-e', '--exp-name', required=True, type=str)
+    parser.add_argument('-p', '--path', type=str, default='')
     parser.add_argument('-cu', '--cuda', type=int, default=-1)
     parser.add_argument('-ne', '--num-epoch', type=int, default=1000)
     parser.add_argument('-lr', '--learning-rate', type=float, default=1e-2)

@@ -32,6 +32,10 @@ class tianshou_imitation_policy(nn.Module):
         self.device = device
         return super().to(device)
 
+    def load(self, path):
+        state_dict = torch.load(path, map_location=self.device)
+        self.load_state_dict(state_dict)
+
     def forward(self, batch, state=None, mask=None):
         if mask is None:
             return Batch(act=batch.obs.gt_action, state=state)

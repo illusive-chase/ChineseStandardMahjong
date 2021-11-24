@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__all__ = ('resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152')
+__all__ = ('resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152', 'Slider')
 
 import numpy as np
 import torch
@@ -170,3 +170,94 @@ def resnet152(use_bn, dropout=0.5):
     """ return a ResNet 152 object
     """
     return ResNet(BottleNeck, [3, 8, 36, 3], num_input_channels=145, num_classes=235, use_bn=use_bn, dropout=dropout)
+
+
+'''
+single tile: 34
+double tile: 34(0), 24(1), 21(2), 18(3)
+triple tile: 34(00), 21(11), 15(22), 9(33), 24(01), 24(10), 21(02), 21(20)
+triple tile as pack: ...
+quadra tile: 34(000)
+quadra tile as pack: 34(000)
+
+V*(s) = max[a]: sum[s_]: p(s_|s, a) V*(s_)
+'''
+
+def MLP(*nums):
+    layers = []
+    assert len(nums) > 1
+    for in_channels, out_channels in zip(nums[:-1], nums[1:]):
+        layers.append(nn.Conv1d(in_channels, out_channels, 1, padding=0))
+        layers.append(nn.ReLU(inplace=True))
+    return nn.Sequential(*layers)
+
+
+class Slider(nn.Module):
+
+    class SlideLayer2(nn.Module):
+        def __init__(self, stride):
+            super().__init__()
+            self.layer = MLP(64, 32, 32)
+            self.stride = stride
+
+        def forward(self, x):
+            # x: b x 32 x n
+            return self.layer(torch.cat((x[:, :, :-self.stride], x[:, :, self.stride:]), dim=1))
+
+    class SlideLayer3(nn.Module):
+        def __init__(self, stride1, stride2):
+            super().__init__()
+            self.layer = MLP(96, 64, 32)
+            self.strides = (stride1, 9 - stride2, stride1 + stride2)
+
+        def forward(self, x):
+            return self.layer(torch.cat((x[:, :, :-self.strides[2]], x[:, :, self.strides[0]:self.strides[1]], x[:, :, self.strides[2]:]), dim=1))
+
+
+
+    def __init__(self):
+        super().__init__()
+        # tile cube: 145 x 4 x 9 -> 32 x 34
+        # slide 1, 2, 3: 32 x (8, 7, 6) = 32 x 21
+        # silde 11, 22, 33, 01, 10, 02, 20: 32 x (7, 5, 3, 8, 8, 7, 7) = 32 x 45
+
+        self.encoder = MLP(145, 256, 128, 64, 32)
+        slides = ['1', '2', '3', '11', '22', '33', '01', '10', '02', '20']
+        slide_layers = []
+        for slide in slides:
+            slide = list(map(int, slide))
+            if len(slide) == 1:
+                slide_layers.append(self.SlideLayer2(*slide))
+            elif len(slide) == 2:
+                slide_layers.append(self.SlideLayer3(*slide))
+            else:
+                raise ValueError
+
+        self.slide_layers = nn.ModuleList(slide_layers)
+        self.projection = MLP(32, 4)
+        self.linear = nn.Sequential(
+            nn.Linear(928, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 235)
+        )
+
+    def forward(self, x):
+        feat = self.encoder(x.view(-1, 145, 36)[:, :, :34])
+        # feat: b x 32 x 34
+        m, p, s, z = feat[:, :, 0:9], feat[:, :, 9:18], feat[:, :, 18:27], feat[:, :, 27:34]
+        
+        results = [z]
+        for t in (m, p, s):
+            results.append(t)
+            for layer in self.slide_layers:
+                results.append(layer(t))
+            # result: b x 32 x (9, 21, 45) = b x 32 x 75
+        # results: b x 32 x (7, 75, 75, 75) = b x 32 x 232
+        x = self.projection(torch.cat(results, dim=2))
+        # x: b x 4 x 232 = b x 928 x 1
+        return self.linear(x.view(x.size(0), -1))
+
+
+
+
+
