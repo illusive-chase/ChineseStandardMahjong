@@ -12,7 +12,7 @@ def performance(args):
     torch.manual_seed(args.seed)
     torch.set_num_threads(1)
     device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
-    network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm)
+    network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
     policy = wrapper_policy(network).to(device)
     policy.load(args.path)
     policy.eval()
@@ -37,7 +37,7 @@ def performance(args):
                     obs, rew, done, info = env.step(policy(obs))
                 total_reward += rew / 4
             t.set_postfix(rew=total_reward / (eps + 1))
-    print('Perf: {:.1f}'.format(total_reward / eps))
+    print('Perf: {:.2f}'.format(total_reward / eps))
 
 
 if __name__ == "__main__":
@@ -47,6 +47,7 @@ if __name__ == "__main__":
     parser.add_argument('-cp', '--compare', type=str, default='')
     parser.add_argument('-cu', '--cuda', type=int, default=-1)
     parser.add_argument('-bn', '--batch-norm', action='store_true')
+    parser.add_argument('-dp', '--dropout', type=float, default=0.5)
     parser.add_argument('--resnet', type=int, choices=[18, 34, 50, 101, 152], default=18)
     args = parser.parse_args()
     performance(args)
