@@ -22,11 +22,13 @@ class wrapper_policy(nn.Module):
         return super().to(device)
 
     def forward(self, obs):
-        is_batch = obs[1].ndim == 2
-        mask = torch.from_numpy(obs[1]).to(self.device).view(-1, 235)
+        is_batch = obs[1].ndim > 1
+        mask = torch.from_numpy(obs[1]).to(self.device)
+        shape = mask.shape[:-1]
+        mask = mask.view(-1, 235)
         obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 145, 4, 9)
         with torch.no_grad():
             logits = self.network(obs)
         logits[~mask] = logits.min() - 20
-        action = torch.argmax(logits, dim=-1).cpu().numpy()
-        return action if is_batch else action[0]
+        action = torch.argmax(logits, dim=-1)
+        return action.view(*shape).cpu().numpy() if is_batch else action[0].cpu().numpy()

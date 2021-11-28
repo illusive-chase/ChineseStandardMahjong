@@ -60,7 +60,9 @@ class Runner(gym.Env):
         self.action_space = gym.spaces.Discrete(self.action_shape[1])
         self.eval = eval
         self.tileWallDummy = None
-        self.seed(seed)
+        self.randSeed = seed
+        if seed is not None:
+            self.seed(seed)
         # self.no_need_other_obs = type(other_policy) is imitation_policy
         self.no_need_other_obs = False
 
