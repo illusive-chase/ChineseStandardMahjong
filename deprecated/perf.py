@@ -1,9 +1,10 @@
 from utils.policy import random_policy
-from env.multirunner import MultiRunner as MEnv
+from env.runner import Runner as REnv
 from learning.wrapper import wrapper_policy
 from learning.model import *
 import torch
 import argparse
+import tqdm
 
 
 
@@ -23,9 +24,20 @@ def performance(args):
         other_policy.load(args.compare)
         other_policy.eval()
 
-    env = MEnv(policy, other_policy, n_env_parallel=3, n_torch_parallel=2, max_env_num=100, max_batch_size=5000, max_eps=1000)
-    env.collect(eval=True, verbose=(not args.quiet))
-    print(env.mean_reward())
+    total_reward = 0
+    env = REnv(other_policy=other_policy, seed=args.seed, verbose=False, eval=True)
+    with tqdm.trange(100, desc=f"Matching", dynamic_ncols=True, ascii=True) as t:
+        for eps in t:
+            for i in range(4):
+                if i == 0:
+                    env.tileWallDummy = None
+                obs = env.reset()
+                done = False
+                while not done:
+                    obs, rew, done, info = env.step(policy(obs))
+                total_reward += rew / 4
+            t.set_postfix(rew=total_reward / (eps + 1))
+    print('Perf: {:.2f}'.format(total_reward / eps))
 
 
 if __name__ == "__main__":
@@ -35,7 +47,6 @@ if __name__ == "__main__":
     parser.add_argument('-cp', '--compare', type=str, default='')
     parser.add_argument('-cu', '--cuda', type=int, default=-1)
     parser.add_argument('-bn', '--batch-norm', action='store_true')
-    parser.add_argument('-q', '--quiet', action='store_true')
     parser.add_argument('--resnet', type=int, choices=[18, 34, 50, 101, 152], default=18)
     args = parser.parse_args()
     performance(args)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__all__ = ('MultiRunner',)
+__all__ = ('MultiRunner', 'WrappedTrainRunner', 'WrappedEvalRunner')
 
 import threading
 import torch
@@ -9,10 +9,10 @@ from utils.sync_buffer import SyncBuffer
 from env.runner import Runner, FinishError
 
 
-sleep_slot_time = 0.001
+sleep_slot_time = 0.0005
 
 
-class WrappedRunner(Runner):
+class WrappedTrainRunner(Runner):
     def __init__(self):
         super().__init__(other_policy=None, verbose=False, seed=None, eval=False)
 
@@ -48,16 +48,67 @@ class WrappedRunner(Runner):
                 return (None, state), 0.0, np.asarray(False), {}
             return (state, None), 0.0, np.asarray(False), {}
 
+class WrappedEvalRunner(Runner):
+    def __init__(self):
+        super().__init__(other_policy=None, verbose=False, seed=None, eval=True)
+        self.rews = np.zeros(4)
+        self.game_id = 0
+        self.scores = []
+
+    def reset(self):
+        state = super().reset()
+        other_state = self.fixData
+        return state, other_state
+
+
+    def step(self, actions):
+        if self.wait_to_play is None:
+            fix_action = actions[1]
+            action = [actions[0] if i == self.id else fix_action[self.other.index(i)] for i in range(4)]
+            real_action = [self.vec_data.realize(action[i]) for i in range(4)]
+        else:
+            action = actions[0] if self.wait_to_play == self.id else actions[1]
+            real_action = ['PASS'] * 4
+            real_action[self.wait_to_play] = self.vec_data.realize(action)
+
+        while True:
+            try:
+                self.roundInput(real_action)
+                self.canHu = [-4] * 4
+                self.roundOutput()
+            except FinishError:
+                for i in range(4):
+                    self.rews[i] += self.rew[(self.id + i) % 4]
+                self.game_id += 1
+                if self.game_id == 4:
+                    to_assign = np.asarray([4, 3, 2, 1, 0], dtype=np.float64)
+                    to_assign = to_assign[(self.rews > self.rews[0]).sum():-(self.rews < self.rews[0]).sum()-1].mean() - 2.5
+                    self.scores.append(to_assign)
+                    self.game_id = 0
+                    self.rews[:] = 0
+                    self.tileWallDummy = None
+                if len(self.scores) < 1:
+                    return self.reset(), 0.0, np.asarray(False), {}
+                return self.vec_data.get_obs(self.id, self.other), sum(self.scores), np.asarray(True), {}
+            finally:
+                pass
+            if self.wait_to_play is None:
+                return self.vec_data.get_obs(self.id, self.other), 0.0, np.asarray(False), {}
+            state, _ = self.vec_data.get_obs(self.wait_to_play, other=[])
+            if self.wait_to_play != self.id:
+                return (None, state), 0.0, np.asarray(False), {}
+            return (state, None), 0.0, np.asarray(False), {}
+
 
 
 
 class EnvWorker(threading.Thread):
-    def __init__(self, buffer, other_buffer, max_env_num):
+    def __init__(self, buffer, other_buffer, max_env_num, eval):
         super().__init__()
         self.buffer = buffer
         self.other_buffer = other_buffer
         self.max_env_num = max_env_num
-        self.env_constructor = WrappedRunner
+        self.env_constructor = WrappedTrainRunner if not eval else WrappedEvalRunner
         self.envs = []
         self.workload = (0, 0)
 
@@ -154,14 +205,14 @@ class TorchWorker(threading.Thread):
     
 
 class MultiRunner:
-    def __init__(self, policy, other_policy, n_torch_parallel, n_env_parallel, max_env_num, max_batch_size, max_step):
+    def __init__(self, policy, other_policy, n_torch_parallel, n_env_parallel, max_env_num, max_batch_size, max_step=None, max_eps=None):
         self.policy = policy
         self.other_policy = other_policy
         self.n_env_parallel = n_env_parallel
         self.n_torch_parallel = n_torch_parallel
         self.max_batch_size = max_batch_size
         self.max_env_num = max_env_num
-        self.buffer = SyncBuffer(True, max_step)
+        self.buffer = SyncBuffer(True, max_step=max_step, max_eps=max_eps)
         self.other_buffer = SyncBuffer(False)
         self.torch_lock = threading.Lock()
         self.other_torch_lock = threading.Lock()
@@ -169,7 +220,7 @@ class MultiRunner:
         assert self.n_torch_parallel > 1
 
 
-    def collect(self):
+    def collect(self, eval=False, verbose=False):
         self.buffer.reset()
         self.other_buffer.reset()
 
@@ -180,7 +231,7 @@ class MultiRunner:
             TorchWorker(self.other_policy, self.other_buffer, self.other_torch_lock, self.max_batch_size // 3)
             for _ in range((self.n_torch_parallel + 1) // 2)
         ]
-        self.env_workers = [EnvWorker(self.buffer, self.other_buffer, self.max_env_num) for _ in range(self.n_env_parallel)]
+        self.env_workers = [EnvWorker(self.buffer, self.other_buffer, self.max_env_num, eval) for _ in range(self.n_env_parallel)]
 
         start = time()
 
@@ -189,26 +240,28 @@ class MultiRunner:
         
         count = threading.activeCount()
         while count > 1 + self.n_torch_parallel:
-            print('Running Threads:', count)
+            if verbose:
+                print('Running Threads:', count)
             sleep(1)
             count = threading.activeCount()
-            print('Batch Per Sec: ', end='')
-            past_time = time() - start
-            for torch_thread in self.torch_workers:
-                print('{:.1f} '.format(torch_thread.workload[0] / past_time), end='')
-            print('\nEmpty GPU Fetch Per Sec: ', end='')
-            for torch_thread in self.torch_workers:
-                print('{:.1f} '.format(torch_thread.workload[1] / past_time), end='')
-            print('\nEnvs Parallel:', sum([len(env_thread.envs) for env_thread in self.env_workers]), end='')
-            print('\nStep Per Sec: ', end='')
-            for env_thread in self.env_workers:
-                print('{:.1f} '.format(env_thread.workload[0] / past_time), end='')
-            print('\nEmpty CPU Fetch Per Sec: ', end='')
-            for env_thread in self.env_workers:
-                print('{:.1f} '.format(env_thread.workload[1] / past_time), end='')
-            print('\nEPS: {}/{:.2f}'.format(self.buffer.size(), self.buffer.size() / past_time))
-            print('SPS: {}/{:.2f}'.format(self.buffer.total_step, self.buffer.total_step / past_time))
-            print('')
+            if verbose:
+                print('Batch Per Sec: ', end='')
+                past_time = time() - start
+                for torch_thread in self.torch_workers:
+                    print('{:.1f} '.format(torch_thread.workload[0] / past_time), end='')
+                print('\nEmpty GPU Fetch Per Sec: ', end='')
+                for torch_thread in self.torch_workers:
+                    print('{:.1f} '.format(torch_thread.workload[1] / past_time), end='')
+                print('\nEnvs Parallel:', sum([len(env_thread.envs) for env_thread in self.env_workers]), end='')
+                print('\nStep Per Sec: ', end='')
+                for env_thread in self.env_workers:
+                    print('{:.1f} '.format(env_thread.workload[0] / past_time), end='')
+                print('\nEmpty CPU Fetch Per Sec: ', end='')
+                for env_thread in self.env_workers:
+                    print('{:.1f} '.format(env_thread.workload[1] / past_time), end='')
+                print('\nEPS: {}/{:.2f}'.format(self.buffer.size(), self.buffer.size() / past_time))
+                print('SPS: {}/{:.2f}'.format(self.buffer.total_step, self.buffer.total_step / past_time))
+                print('')
 
         for thread in (self.torch_workers + self.env_workers):
             thread.join()
@@ -216,6 +269,10 @@ class MultiRunner:
         use = time() - start
         print('Use: {:.2f}s'.format(use))
         print('EPS: {:.2f}'.format(self.buffer.size() / use))
+        print('SPS: {:.2f}'.format(self.buffer.total_step / use))
+
+    def mean_reward(self):
+        return np.mean(self.buffer.reward)
 
         
 

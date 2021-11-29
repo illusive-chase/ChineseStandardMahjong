@@ -6,9 +6,11 @@ from threading import Lock
 from collections import deque
 
 class SyncBuffer:
-    def __init__(self, store_traj, max_step=0):
+    def __init__(self, store_traj, max_step=None, max_eps=None):
         self.maxlen = 1000 if store_traj else 1
-        self.max_step = max_step if store_traj else 0
+        self.max_step = max_step if store_traj else None
+        self.max_eps = max_eps if store_traj else None
+        assert (not store_traj) or (max_step is not None) or (max_eps is not None)
         self.total_step = 0
         self.register_lock = Lock()
         self.reset()
@@ -31,7 +33,7 @@ class SyncBuffer:
                 self.open_idxs.pop(i)
             else:
                 i += 1
-        if self.max_step > 0 and self.total_step >= self.max_step:
+        if (self.max_step is not None and self.total_step >= self.max_step) or (self.max_eps is not None and self.size() >= self.max_eps):
             self.register_lock.release()
             return None
         id = len(self.status)
