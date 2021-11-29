@@ -11,11 +11,11 @@ class SyncBuffer:
         self.max_step = max_step if store_traj else None
         self.max_eps = max_eps if store_traj else None
         assert (not store_traj) or (max_step is not None) or (max_eps is not None)
-        self.total_step = 0
         self.register_lock = Lock()
         self.reset()
 
     def reset(self):
+        self.total_step = 0
         self.state = []
         self.mask = []
         self.action = []

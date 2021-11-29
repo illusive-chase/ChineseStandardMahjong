@@ -274,6 +274,9 @@ class MultiRunner:
     def mean_reward(self):
         return np.mean(self.buffer.reward)
 
+    def get_buffer(self):
+        
+
         
 
 
