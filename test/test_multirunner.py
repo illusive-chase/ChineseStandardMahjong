@@ -6,8 +6,10 @@ from learning.model import resnet18
 
 if __name__ == "__main__":
     policy = wrapper_policy(resnet18(use_bn=True)).to('cuda:0')
-    # policy.load('./data/best.pth')
-    other_policy = wrapper_policy(resnet18(use_bn=True)).to('cuda:0')
+    policy.load('./data/best.pth')
+    policy.eval()
+    other_policy = policy
+    # other_policy = wrapper_policy(resnet18(use_bn=True)).to('cuda:0')
     # other_policy.load('./data/cmp.pth')
 
     env = WTEnv()

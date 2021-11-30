@@ -3,13 +3,12 @@ __all__ = ('SyncBuffer',)
 
 import numpy as np
 from threading import Lock
-from collections import deque
 
 class SyncBuffer:
     def __init__(self, store_traj, max_step=None, max_eps=None):
-        self.maxlen = 1000 if store_traj else 1
         self.max_step = max_step if store_traj else None
         self.max_eps = max_eps if store_traj else None
+        self.store_traj = store_traj
         assert (not store_traj) or (max_step is not None) or (max_eps is not None)
         self.register_lock = Lock()
         self.reset()
@@ -22,6 +21,8 @@ class SyncBuffer:
         self.status = []
         self.reward = []
         self.open_idxs = []
+        if self.store_traj:
+            self.traj = []
 
     def register(self, init_state):
         self.register_lock.acquire()
@@ -29,7 +30,8 @@ class SyncBuffer:
         while i < len(self.open_idxs):
             id = self.open_idxs[i]
             if self.reward[id] is not None:
-                self.total_step += len(self.state[id]) - 1
+                if self.store_traj:
+                    self.total_step += len(self.traj[id][0]) - 1
                 self.open_idxs.pop(i)
             else:
                 i += 1
@@ -38,11 +40,13 @@ class SyncBuffer:
             return None
         id = len(self.status)
         self.open_idxs.append(id)
-        self.state.append(deque([init_state[0]], maxlen=self.maxlen))
-        self.mask.append(deque([init_state[1]], maxlen=self.maxlen))
-        self.action.append(deque())
+        self.state.append(init_state[0])
+        self.mask.append(init_state[1])
+        self.action.append(None)
         self.reward.append(None)
         self.status.append(0)
+        if self.store_traj:
+            self.traj.append(([], [], []))
         self.register_lock.release()
         return id
 
@@ -52,37 +56,86 @@ class SyncBuffer:
     def open_slots(self):
         return self.open_idxs
 
+    def is_joined(self):
+        if (self.max_step is not None and self.total_step >= self.max_step) or (self.max_eps is not None and self.size() >= self.max_eps):
+            if self.open_idxs == []:
+                return True
+        return False
+
     def get_action(self, id):
         if self.status[id] != 2:
             return None
-        return self.action[id][-1]
+        return self.action[id]
 
     def get_state(self, id):
         if id >= len(self.status) or self.status[id] != 0:
             return None, None
         self.status[id] = 1
-        return self.state[id][-1], self.mask[id][-1]
+        return self.state[id], self.mask[id]
 
     def push_state(self, id, state):
         if state is None:
-            self.state[id].append(None)
-            self.mask[id].append(None)
-            self.action[id].append(-1)
+            self.state[id] = None
+            self.mask[id] = None
+            self.action[id] = -1
         else:
-            self.state[id].append(state[0])
-            self.mask[id].append(state[1])
+            if self.store_traj and self.mask[id] is not None and self.mask[id].sum() > 1:
+                self.traj[id][0].append(self.state[id])
+                self.traj[id][1].append(self.mask[id])
+                self.traj[id][2].append(self.action[id])
+            self.state[id] = np.copy(state[0])
+            self.mask[id] = np.copy(state[1])
             self.status[id] = 0
+            
 
     def push_action(self, id, action):
-        self.action[id].append(action)
+        self.action[id] = np.copy(action)
         self.status[id] = 2
 
     def push_final_state(self, id, state, rew):
-        self.state[id].append(state[0])
-        self.mask[id].append(state[1])
-        self.reward[id] = rew
+        if self.store_traj and self.mask[id] is not None and self.mask[id].sum() > 1:
+            self.traj[id][0].append(self.state[id])
+            self.traj[id][1].append(self.mask[id])
+            self.traj[id][2].append(self.action[id])
+        self.state[id] = np.copy(state[0])
+        self.mask[id] = np.copy(state[1])
+        self.reward[id] = np.copy(rew)
         self.status[id] = 3
 
+    def unfinished_index(self):
+        return np.array([], int)
+
+    def sample(self, batch_size):
+        # only for on-policy
+        assert batch_size == 0
+        maxlen = np.sum([len(traj[0]) for traj in self.traj])
+        state_batch = np.zeros((maxlen, 145, 4, 9), dtype=np.bool)
+        mask_batch = np.zeros((maxlen, 235), dtype=np.bool)
+        action_batch = np.zeros((maxlen), dtype=np.uint8)
+        done_batch = np.zeros((maxlen,), dtype=np.bool)
+        reward_batch = np.zeros((maxlen,))
+
+        idx = 0
+        for reward, traj in zip(self.reward, self.traj):
+            max_step = len(traj[0])
+            if max_step == 0:
+                continue
+            state_batch[idx:idx+max_step] = np.stack(traj[0]).reshape(-1, 145, 4, 9)
+            mask_batch[idx:idx+max_step] = np.stack(traj[1])
+            action_batch[idx:idx+max_step] = np.stack(traj[2])
+            done_batch[idx+max_step-1] = True
+            reward_batch[idx+max_step-1] = reward
+            idx += max_step
+
+        self.done = done_batch
+
+        return {
+            'obs': state_batch,
+            'mask': mask_batch,
+            'act': action_batch,
+            'done': done_batch,
+            'rew': reward_batch
+        }, np.arange(maxlen)
 
 
 

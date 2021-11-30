@@ -218,6 +218,7 @@ class MultiRunner:
         self.other_torch_lock = threading.Lock()
 
         assert self.n_torch_parallel > 1
+        assert (max_step is None) != (max_eps is None)
 
 
     def collect(self, eval=False, verbose=False):
@@ -238,13 +239,14 @@ class MultiRunner:
         for thread in (self.torch_workers + self.env_workers):
             thread.start()
         
-        count = threading.activeCount()
+        count = sum([thread.is_alive() for thread in (self.torch_workers + self.env_workers)]) + 1
+        if verbose:
+            print('\n' * 8)
         while count > 1 + self.n_torch_parallel:
-            if verbose:
-                print('Running Threads:', count)
             sleep(1)
-            count = threading.activeCount()
+            count = sum([thread.is_alive() for thread in (self.torch_workers + self.env_workers)]) + 1
             if verbose:
+                print('\033[9F\033[0JRunning Threads:', count)
                 print('Batch Per Sec: ', end='')
                 past_time = time() - start
                 for torch_thread in self.torch_workers:
@@ -266,16 +268,20 @@ class MultiRunner:
         for thread in (self.torch_workers + self.env_workers):
             thread.join()
 
-        use = time() - start
-        print('Use: {:.2f}s'.format(use))
-        print('EPS: {:.2f}'.format(self.buffer.size() / use))
-        print('SPS: {:.2f}'.format(self.buffer.total_step / use))
+        if verbose:
+            use = time() - start
+            print('Use: {:.2f}s'.format(use))
+            print('EPS: {:.2f}'.format(self.buffer.size() / use))
+            print('SPS: {:.2f}'.format(self.buffer.total_step / use))
+            print('')
 
     def mean_reward(self):
+        assert self.buffer.is_joined()
         return np.mean(self.buffer.reward)
 
     def get_buffer(self):
-        
+        assert self.buffer.is_joined()
+        return self.buffer
 
         
 
