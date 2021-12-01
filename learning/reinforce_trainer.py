@@ -75,7 +75,7 @@ def onpolicy_trainer(
         val_rew = stat['val-rew'].get()
         print({"val-rew" : val_rew})
 
-        if best_val_rew > val_rew:
+        if best_val_rew < val_rew:
             best_losses = val_rew
             if save_fn:
                 save_fn(policy)

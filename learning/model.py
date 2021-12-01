@@ -146,27 +146,27 @@ class ResNet(nn.Module):
         output = self.fc(output)
         return output
 
-def resnet18(use_bn, dropout=0.5):
+def resnet18(use_bn, dropout=0.5, shape=(145, 235)):
     """ return a ResNet 18 object
     """
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_input_channels=145, num_classes=235, use_bn=use_bn, dropout=dropout)
+    return ResNet(BasicBlock, [2, 2, 2, 2], num_input_channels=shape[0], num_classes=shape[1], use_bn=use_bn, dropout=dropout)
 
-def resnet34(use_bn, dropout=0.5):
+def resnet34(use_bn, dropout=0.5, shape=(145, 235)):
     """ return a ResNet 34 object
     """
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_input_channels=145, num_classes=235, use_bn=use_bn, dropout=dropout)
+    return ResNet(BasicBlock, [3, 4, 6, 3], num_input_channels=shape[0], num_classes=shape[1], use_bn=use_bn, dropout=dropout)
 
-def resnet50(use_bn, dropout=0.5):
+def resnet50(use_bn, dropout=0.5, shape=(145, 235)):
     """ return a ResNet 50 object
     """
-    return ResNet(BottleNeck, [3, 4, 6, 3], num_input_channels=145, num_classes=235, use_bn=use_bn, dropout=dropout)
+    return ResNet(BottleNeck, [3, 4, 6, 3], num_input_channels=shape[0], num_classes=shape[1], use_bn=use_bn, dropout=dropout)
 
-def resnet101(use_bn, dropout=0.5):
+def resnet101(use_bn, dropout=0.5, shape=(145, 235)):
     """ return a ResNet 101 object
     """
-    return ResNet(BottleNeck, [3, 4, 23, 3], num_input_channels=145, num_classes=235, use_bn=use_bn, dropout=dropout)
+    return ResNet(BottleNeck, [3, 4, 23, 3], num_input_channels=shape[0], num_classes=shape[1], use_bn=use_bn, dropout=dropout)
 
-def resnet152(use_bn, dropout=0.5):
+def resnet152(use_bn, dropout=0.5, shape=(145, 235)):
     """ return a ResNet 152 object
     """
     return ResNet(BottleNeck, [3, 8, 36, 3], num_input_channels=145, num_classes=235, use_bn=use_bn, dropout=dropout)
