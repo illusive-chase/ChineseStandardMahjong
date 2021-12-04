@@ -23,7 +23,7 @@ def performance(args):
         other_policy.load(args.compare)
         other_policy.eval()
 
-    env = MEnv(policy, other_policy, n_env_parallel=3, n_torch_parallel=2, max_env_num=100, max_batch_size=5000, max_eps=1000)
+    env = MEnv(policy, other_policy, n_env_parallel=1, n_torch_parallel=2, max_env_num=300, max_batch_size=20000, max_eps=1000)
     env.collect(eval=True, verbose=(not args.quiet))
     print(env.mean_reward())
 

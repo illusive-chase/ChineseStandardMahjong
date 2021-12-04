@@ -40,8 +40,8 @@ class SyncBuffer:
             return None
         id = len(self.status)
         self.open_idxs.append(id)
-        self.state.append(init_state[0])
-        self.mask.append(init_state[1])
+        self.state.append(np.copy(init_state[0]))
+        self.mask.append(np.copy(init_state[1]))
         self.action.append(None)
         self.reward.append(None)
         self.status.append(0)
@@ -110,10 +110,12 @@ class SyncBuffer:
         assert batch_size == 0
         maxlen = np.sum([len(traj[0]) for traj in self.traj])
         state_batch = np.zeros((maxlen, 145, 4, 9), dtype=np.bool)
+        next_state_batch = np.zeros((maxlen, 145, 4, 9), dtype=np.bool)
         mask_batch = np.zeros((maxlen, 235), dtype=np.bool)
         action_batch = np.zeros((maxlen), dtype=np.uint8)
         done_batch = np.zeros((maxlen,), dtype=np.bool)
         reward_batch = np.zeros((maxlen,))
+        np.random.shuffle(self.traj)
 
         idx = 0
         for reward, traj in zip(self.reward, self.traj):
@@ -121,6 +123,7 @@ class SyncBuffer:
             if max_step == 0:
                 continue
             state_batch[idx:idx+max_step] = np.stack(traj[0]).reshape(-1, 145, 4, 9)
+            next_state_batch[idx:idx+max_step-1] = state_batch[idx+1:idx+max_step]
             mask_batch[idx:idx+max_step] = np.stack(traj[1])
             action_batch[idx:idx+max_step] = np.stack(traj[2])
             done_batch[idx+max_step-1] = True
@@ -128,14 +131,16 @@ class SyncBuffer:
             idx += max_step
 
         self.done = done_batch
+        indices = np.arange(maxlen)
 
         return {
             'obs': state_batch,
+            'obs_next': next_state_batch,
             'mask': mask_batch,
             'act': action_batch,
             'done': done_batch,
             'rew': reward_batch
-        }, np.arange(maxlen)
+        }, indices
 
 
 

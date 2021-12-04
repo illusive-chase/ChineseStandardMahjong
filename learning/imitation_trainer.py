@@ -111,7 +111,7 @@ def offline_trainer(
     start_epoch, gradient_step = 0, 0
     if resume_from_log:
         start_epoch, _, gradient_step = logger.restore_data()
-    stat: Dict[str, MovAvg] = defaultdict(MovAvg)
+    stat: Dict[str, MovAvg] = defaultdict(lambda :MovAvg(size=10))
     start_time = time.time()
 
     policy.eval()

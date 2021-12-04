@@ -21,6 +21,14 @@ class WrappedTrainRunner(Runner):
         other_state = self.fixData
         return state, other_state
 
+    def playerError(self, player: int, code: str):
+        for i in range(4):
+            if (i == player):
+                self.rew[i] = -30.
+            else:
+                self.rew[i] = 10.
+        print(code)
+        raise FinishError
 
     def step(self, actions):
         if self.wait_to_play is None:
@@ -60,6 +68,14 @@ class WrappedEvalRunner(Runner):
         other_state = self.fixData
         return state, other_state
 
+    def playerError(self, player: int, code: str):
+        for i in range(4):
+            if (i == player):
+                self.rew[i] = -30.
+            else:
+                self.rew[i] = 10.
+        print(code)
+        raise FinishError
 
     def step(self, actions):
         if self.wait_to_play is None:

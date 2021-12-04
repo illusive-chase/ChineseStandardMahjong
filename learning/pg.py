@@ -82,6 +82,7 @@ class PGPolicy(BasePolicy):
         """
         v_s_ = np.full(indices.shape, self.ret_rms.mean)
         batch = Batch(batch)
+        batch.rew[batch.done] = np.sign(batch.rew[batch.done] + 8)
         unnormalized_returns, _ = self.compute_episodic_return(
             batch, buffer, indices, v_s_=v_s_, gamma=self._gamma, gae_lambda=1.0
         )
@@ -101,9 +102,10 @@ class PGPolicy(BasePolicy):
         obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 145, 4, 9)
         with torch.no_grad():
             logits = self.network(obs)
-        logits[~mask] = logits.min() - 20
+        logits = logits + (logits.min() - logits.max() - 20) * ~mask
         dist = self.dist_fn(logits)
-        action = dist.sample()
+        # action = dist.sample()
+        action = logits.argmax(dim=-1)
         return action.view(*shape).cpu().numpy() if is_batch else action[0].cpu().numpy()
 
     def update_forward(self, batch):
@@ -120,8 +122,11 @@ class PGPolicy(BasePolicy):
         ratio_10s = []
         ratio_25s = []
         ratio_100s = []
+        eq_ratios = []
+        eq_ratios_after = []
+        # assert repeat == 1
         for _ in range(repeat):
-            for b in batch.split(batch_size, merge_last=False, shuffle=True):
+            for b in batch.split(batch_size, merge_last=False, shuffle=False):
                 self.optim.zero_grad()
                 result = self.update_forward(b)
                 dist = result.dist
@@ -129,12 +134,15 @@ class PGPolicy(BasePolicy):
                 ret = to_torch(b.returns, device=self.device)
                 log_prob = dist.log_prob(a).reshape(len(ret), -1).transpose(0, 1)
                 loss = -(log_prob * ret).mean()
+                # loss = -log_prob.mean()
                 loss.backward()
                 self.optim.step()
                 losses.append(loss.item())
 
                 with torch.no_grad():
+                    eq_ratios.append((result.logits.argmax(dim=-1) == a).float().mean().item())
                     result = self.update_forward(b)
+                    eq_ratios_after.append((result.logits.argmax(dim=-1) == a).float().mean().item())
                     new_log_prob = result.dist.log_prob(a).reshape(len(ret), -1).transpose(0, 1)
                     ratio = (new_log_prob - log_prob).exp().float()
                     ratio[ratio < 1] = 1 / ratio[ratio < 1]
@@ -144,9 +152,10 @@ class PGPolicy(BasePolicy):
                     ratio_10s.append(ratio_10)
                     ratio_25s.append(ratio_25)
                     ratio_100s.append(ratio_100)
+                    
                 break
         # update learning rate if lr_scheduler is given
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
 
-        return {"loss": losses, "change-10%": ratio_10s, "change-25%": ratio_25s, "change-100%": ratio_100s}
+        return { "loss": losses, "cg-10%": ratio_10s, "cg-25%": ratio_25s, "cg-100%": ratio_100s, "eqr": eq_ratios, "eqr-after": eq_ratios_after }

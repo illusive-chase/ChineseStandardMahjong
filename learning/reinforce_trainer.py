@@ -28,12 +28,13 @@ def onpolicy_trainer(
     resume_from_log: bool = False,
     logger: BaseLogger = LazyLogger(),
     verbose: bool = False,
+    force_to_save: bool = False
 ):
 
     start_epoch, gradient_step = 0, 0
     if resume_from_log:
         start_epoch, _, gradient_step = logger.restore_data()
-    stat: Dict[str, MovAvg] = defaultdict(MovAvg)
+    stat: Dict[str, MovAvg] = defaultdict(lambda :MovAvg(size=10))
     start_time = time.time()
 
     # 2,1,400: sps 250, eps 18
@@ -59,7 +60,7 @@ def onpolicy_trainer(
             losses = policy.update(
                 0,
                 train_runner.get_buffer(),
-                batch_size=step_per_collect,
+                batch_size=batch_size,
                 repeat=repeat_per_collect
             )
             for k in losses.keys():
@@ -75,7 +76,7 @@ def onpolicy_trainer(
         val_rew = stat['val-rew'].get()
         print({"val-rew" : val_rew})
 
-        if best_val_rew < val_rew:
+        if force_to_save or best_val_rew < val_rew:
             best_losses = val_rew
             if save_fn:
                 save_fn(policy)

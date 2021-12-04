@@ -70,7 +70,7 @@ class tianshou_imitation_policy(nn.Module):
                 losses.append(loss.item())
             self.post_process_fn(batch, buffer, indices)
 
-        return {("val-loss" if val else "loss"): losses}
+        return {("val-loss" if val else "loss"): losses, "eq-ratio": (action.detach().argmax(dim=-1) == gt_action).float().mean().item()}
 
     def map_action(self, action):
         return action
