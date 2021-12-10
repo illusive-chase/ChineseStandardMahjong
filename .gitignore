@@ -9,4 +9,8 @@
 !/scripts/
 !/test/
 !/README.md
+!/improve.py
+!/reinforce_pg.py
+!/reinforce_ppo.py
+!/reinforce_cr.py
 __pycache__/
