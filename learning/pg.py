@@ -83,6 +83,7 @@ class PGPolicy(BasePolicy):
         v_s_ = np.full(indices.shape, self.ret_rms.mean)
         batch = Batch(batch)
         batch.rew[batch.done] = np.sign(batch.rew[batch.done] + 8)
+        self.eval()
         unnormalized_returns, _ = self.compute_episodic_return(
             batch, buffer, indices, v_s_=v_s_, gamma=self._gamma, gae_lambda=1.0
         )
@@ -95,21 +96,22 @@ class PGPolicy(BasePolicy):
         return to_torch(batch, device=self.device)
 
     def forward(self, obs):
+        self.eval()
         is_batch = obs[1].ndim > 1
         mask = torch.from_numpy(obs[1]).to(self.device)
         shape = mask.shape[:-1]
         mask = mask.view(-1, 235)
-        obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 145, 4, 9)
+        obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 161, 4, 9)[:, :145, :, :]
         with torch.no_grad():
             logits = self.network(obs)
         logits = logits + (logits.min() - logits.max() - 20) * ~mask
         dist = self.dist_fn(logits)
-        # action = dist.sample()
-        action = logits.argmax(dim=-1)
+        action = dist.sample()
+        # action = logits.argmax(dim=-1)
         return action.view(*shape).cpu().numpy() if is_batch else action[0].cpu().numpy()
 
     def update_forward(self, batch):
-        logits = self.network(batch.obs.float())
+        logits = self.network(batch.obs.float()[:, :145, :, :])
         logits = logits + (logits.min() - logits.max() - 20) * ~batch.mask
         dist = self.dist_fn(logits)
         act = dist.sample()
@@ -124,9 +126,10 @@ class PGPolicy(BasePolicy):
         ratio_100s = []
         eq_ratios = []
         eq_ratios_after = []
+        self.eval()
         # assert repeat == 1
         for _ in range(repeat):
-            for b in batch.split(batch_size, merge_last=False, shuffle=False):
+            for b in batch.split(batch_size, merge_last=False, shuffle=True):
                 self.optim.zero_grad()
                 result = self.update_forward(b)
                 dist = result.dist

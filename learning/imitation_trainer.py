@@ -30,7 +30,7 @@ def imitation_trainer(
     save_checkpoint_fn: Optional[Callable[[int, int, int], None]] = None,
     resume_from_log: bool = False,
     reward_metric: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-    logger: BaseLogger = LazyLogger(),
+    logger: BaseLogger = LazyLogger()
 ):
 
     start_epoch, gradient_step = 0, 0
@@ -106,6 +106,7 @@ def offline_trainer(
     resume_from_log: bool = False,
     reward_metric: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     logger: BaseLogger = LazyLogger(),
+    force_to_save: bool = False
 ):
 
     start_epoch, gradient_step = 0, 0
@@ -147,7 +148,7 @@ def offline_trainer(
             stat[k].add(losses[k])
             losses[k] = stat[k].get()
         print(losses)
-        if best_losses > losses['val-loss']:
+        if force_to_save or best_losses > losses['val-loss']:
             best_losses = losses['val-loss']
             if save_fn:
                 save_fn(policy)

@@ -5,13 +5,15 @@ import numpy as np
 from threading import Lock
 
 class SyncBuffer:
-    def __init__(self, store_traj, max_step=None, max_eps=None):
+    def __init__(self, store_traj, max_step=None, max_eps=None, max_len=None):
         self.max_step = max_step if store_traj else None
         self.max_eps = max_eps if store_traj else None
+        self.max_len = max_len
         self.store_traj = store_traj
         assert (not store_traj) or (max_step is not None) or (max_eps is not None)
         self.register_lock = Lock()
         self.reset()
+        self.keep = []
 
     def reset(self):
         self.total_step = 0
@@ -108,30 +110,43 @@ class SyncBuffer:
     def sample(self, batch_size):
         # only for on-policy
         assert batch_size == 0
-        maxlen = np.sum([len(traj[0]) for traj in self.traj])
-        state_batch = np.zeros((maxlen, 145, 4, 9), dtype=np.bool)
-        next_state_batch = np.zeros((maxlen, 145, 4, 9), dtype=np.bool)
+        self.traj = self.keep + self.traj
+        np.random.shuffle(self.traj)
+
+        if batch_size == 0:
+            maxlen = np.sum([len(traj[0]) for traj in self.traj])
+        else:
+            maxlen = 0
+            for traj in self.traj:
+                maxlen += len(traj[0])
+                if maxlen > batch_size:
+                    break
+        state_batch = np.zeros((maxlen, 161, 4, 9), dtype=np.bool)
+        next_state_batch = np.zeros((maxlen, 161, 4, 9), dtype=np.bool)
         mask_batch = np.zeros((maxlen, 235), dtype=np.bool)
         action_batch = np.zeros((maxlen), dtype=np.uint8)
         done_batch = np.zeros((maxlen,), dtype=np.bool)
         reward_batch = np.zeros((maxlen,))
-        np.random.shuffle(self.traj)
 
         idx = 0
         for reward, traj in zip(self.reward, self.traj):
             max_step = len(traj[0])
             if max_step == 0:
                 continue
-            state_batch[idx:idx+max_step] = np.stack(traj[0]).reshape(-1, 145, 4, 9)
+            state_batch[idx:idx+max_step] = np.stack(traj[0]).reshape(-1, 161, 4, 9)
             next_state_batch[idx:idx+max_step-1] = state_batch[idx+1:idx+max_step]
             mask_batch[idx:idx+max_step] = np.stack(traj[1])
             action_batch[idx:idx+max_step] = np.stack(traj[2])
             done_batch[idx+max_step-1] = True
             reward_batch[idx+max_step-1] = reward
             idx += max_step
+            if idx >= maxlen:
+                break
 
         self.done = done_batch
         indices = np.arange(maxlen)
+        if self.max_len is not None:
+            self.keep = self.traj[:max_len]
 
         return {
             'obs': state_batch,

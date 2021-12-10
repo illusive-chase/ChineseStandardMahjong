@@ -320,7 +320,7 @@ class Bot:
             hua = [int(i) for i in request[1:5]]
             for i in range(13):
                 for j in self.other:
-                    nextTile = self.playerData[j].pTileWall.pop(-1)
+                    nextTile = self.playerData[j].get_from_wall()
                     self.playerData[j].draw(nextTile)
                 self.playerData[self.id].pTileWall.pop(-1)
                 self.playerData[self.id].draw(request[5 + i])
@@ -332,7 +332,7 @@ class Bot:
             tw = self.playerData[self.roundStage % 4].pTileWall
             if tw == []:
                 pass
-            self.lastTile = tw.pop(-1)
+            self.lastTile = self.playerData[self.roundStage % 4].get_from_wall()
             if request[:3] == ['3', str(self.roundStage % 4), 'BUHUA']:
                 self.lastTile = request[3]
             elif self.roundStage % 4 == self.id:

@@ -11,7 +11,7 @@ from utils.vec_data import VecData
 
 
 @njit
-def encode(obs, action, mask, dest):
+def encode(obs, action, mask, rew, dest):
     dest[0] = action
     dest[1:35] = obs[0:4, :34].sum(0)
     idx = 0
@@ -50,11 +50,12 @@ def encode(obs, action, mask, dest):
     for i in flat:
         dest[idx] = i + 1
         idx += 1
-    assert idx <= 216
+    assert idx <= 215
+    dest[215] = rew
     
 
 @njit
-def decode(src, obs, act, mask):
+def decode(src, obs, act, mask, rew):
     act[:] = src[0]
     flat = np.zeros(34, dtype=np.uint8)
     for i in range(1, 5):
@@ -87,9 +88,10 @@ def decode(src, obs, act, mask):
             history = src[49 + i * 32 + 4 + j]
             if history > 0:
                 obs[33 + 28 * i + j, history - 1] = 1
-    for i in range(177, 216):
+    for i in range(177, 215):
         if src[i] > 0:
             mask[src[i] - 1] = True
+    rew[:] = src[215]
 
 
 
@@ -107,11 +109,11 @@ class PairedDataset:
         assert 1 <= augmentation <= 12
         self.reset()
 
-    def add(self, obs, act, mask):
+    def add(self, obs, act, mask, rew):
         self.full = None
         if self.actual_size % self.page_size == 0:
             self.pages.append(np.zeros((self.page_size, self.item_size), dtype=np.uint8))
-        encode(obs, act, mask, self.pages[-1][self.actual_size % self.page_size])
+        encode(obs, act, mask, rew, self.pages[-1][self.actual_size % self.page_size])
         self.actual_size += 1
 
     def size(self):
@@ -136,19 +138,28 @@ class PairedDataset:
             for _ in t:
                 page = np.load(f)
                 self.pages.append(page)
+
+    def loads(self, fs):
+        for f in fs:
+            total_size = int(np.load(f)) // self.page_size
+            self.actual_size += total_size * self.page_size
+            for _ in range(total_size):
+                page = np.load(f)
+                self.pages.append(page)
         
     @classmethod
     def _compile(self):
         obs = np.zeros((2, 145, 36), dtype=np.bool)
         mask = np.zeros((2, 235), dtype=np.bool)
         act = np.zeros((2, 1), dtype=np.uint8)
+        rew = np.zeros((2, 1), dtype=np.uint8)
         item = np.zeros(216, dtype=np.uint8)
         try:
-            encode(obs[0], act[0, 0], mask[0], item)
+            encode(obs[0], act[0, 0], mask[0], rew[0, 0], item)
         except AssertionError:
             pass
         try:
-            decode(item, obs[0], act[0], mask[0])
+            decode(item, obs[0], act[0], mask[0], rew[0])
         except AssertionError:
             pass
         self.action_augment_table = np.zeros((12, 235 + 1), dtype=np.uint8)
@@ -162,7 +173,8 @@ class PairedDataset:
         ret[0] = self.action_augment_table[aug_type, item[0] + 1] - 1
         ret[1:49] = self.tile_augment_table[aug_type, item[1:49]]
         ret[49:177] = (item[49:177] // 64) * 64 + self.tile_augment_table[aug_type, item[49:177] % 64]
-        ret[177:] = self.action_augment_table[aug_type, item[177:]]
+        ret[177:215] = self.action_augment_table[aug_type, item[177:215]]
+        ret[215] = item[215]
         return ret
         
 
@@ -170,6 +182,7 @@ class PairedDataset:
         self.pages = []
         self.actual_size = 0
         self.full = None
+        self._indices = None
 
     def sample(self, batch_size):
         if batch_size == 0:
@@ -179,11 +192,16 @@ class PairedDataset:
         obs = np.zeros((batch_size, 145, 36), dtype=np.bool)
         mask = np.zeros((batch_size, 235), dtype=np.bool)
         act = np.zeros((batch_size, 1), dtype=np.uint8)
-        indices = np.random.choice(self.actual_size * self.augmentation, batch_size)
+        rew = np.zeros((batch_size, 1), dtype=np.uint8)
+        if self._indices is None or self._indices.shape[0] < batch_size:
+            self._indices = np.arange(self.actual_size * self.augmentation)
+            np.random.shuffle(self._indices)
+        indices = self._indices[:batch_size]
+        self._indices = self._indices[batch_size:]
         for idx, indice in enumerate(indices):
             item = self.get(indice)
-            decode(item, obs[idx], act[idx], mask[idx])
-        return {'obs':obs, 'mask':mask, 'gt_action':act[:, 0]}, indices
+            decode(item, obs[idx], act[idx], mask[idx], rew[idx])
+        return {'obs':obs, 'mask':mask, 'gt_action':act[:, 0], 'rew':rew[:, 0].astype(np.int8)}, indices
 
     def split(self, val_ratio):
         np.random.shuffle(self.pages[:-1])

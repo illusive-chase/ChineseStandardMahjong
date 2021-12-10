@@ -15,12 +15,13 @@ if __name__ == "__main__":
         done = False
         while not done:
             pdataset.reset()
-            pdataset.add(obs['obs'], obs['gt_action'], obs['mask'])
+            pdataset.add(obs['obs'], obs['gt_action'], obs['mask'], i)
             item = pdataset.sample(0)[0]
-            check = bool((obs['obs'] == item['obs'][0]).all() & (obs['gt_action'] == item['gt_action']).all() & (obs['mask'] == item['mask'][0]).all())
+            check = bool((obs['obs'] == item['obs'][0]).all() & (obs['gt_action'] == item['gt_action']).all() & (obs['mask'] == item['mask'][0]).all() & (obs['rew'] == item['rew']).all())
             if (not check):
                 print('incorrect encode/decode')
                 print((obs['obs'] != item['obs'][0]).nonzero())
                 print((obs['gt_action'] != item['gt_action']).nonzero())
                 print((obs['mask'] != item['mask'][0]).nonzero())
+                print((obs['rew'] != item['rew']).nonzero())
             obs, rew, done, info = env.step(None)

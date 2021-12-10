@@ -138,7 +138,7 @@ class Runner(gym.Env):
         partLength = len(self.tileWall) // 4
         for i in range(4):
             for j in range(partLength):
-                self.playerData[i].pTileWall.append(self.tileWall[partLength * i + j])
+                self.playerData[i].add_to_wall(self.tileWall[partLength * i + j])
 
         if self.verbose:
             self.display.append("初始化：SEED {}".format(self.randSeed))
@@ -399,7 +399,7 @@ class Runner(gym.Env):
                 self.display.append("发牌：")
             for i in range(4):
                 while len(self.playerData[i].tile) < 13:
-                    nextTile = self.playerData[i].pTileWall.pop(-1)
+                    nextTile = self.playerData[i].get_from_wall()
                     if nextTile[0] == 'H':
                         self.playerData[i].flower.append(nextTile)
                     else:
@@ -413,7 +413,7 @@ class Runner(gym.Env):
                 if self.verbose:
                     self.display.append("结束：荒牌")
                 raise FinishError
-            self.lastTile = tw.pop(-1)
+            self.lastTile = self.playerData[self.roundStage % 4].get_from_wall()
             if self.lastTile[0] == 'H':
                 self.lastOp = "BUHUA"
                 if self.verbose:

@@ -68,11 +68,12 @@ class PPOPolicy(A2CPolicy):
         return batch
 
     def forward(self, obs):
+        self.actor.eval()
         is_batch = obs[1].ndim > 1
         mask = torch.from_numpy(obs[1]).to(self.device)
         shape = mask.shape[:-1]
         mask = mask.view(-1, 235)
-        obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 145, 4, 9)
+        obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 161, 4, 9)[:, :145, :, :]
         with torch.no_grad():
             logits = self.actor(obs)
         logits = logits + (logits.min() - logits.max() - 20) * ~mask
@@ -81,7 +82,7 @@ class PPOPolicy(A2CPolicy):
         return action.view(*shape).cpu().numpy() if is_batch else action[0].cpu().numpy()
 
     def update_forward(self, batch):
-        logits = self.actor(batch.obs)
+        logits = self.actor(batch.obs[:, :145, :, :])
         logits = logits + (logits.min() - logits.max() - 20) * ~batch.mask
         dist = self.dist_fn(logits)
         return Batch(dist=dist)
@@ -89,6 +90,8 @@ class PPOPolicy(A2CPolicy):
     def learn(  # type: ignore
         self, batch: Batch, batch_size: int, repeat: int, **kwargs: Any
     ) -> Dict[str, List[float]]:
+        self.actor.eval()
+        self.critic.train()
         assert self._batch == batch_size, "for batch norm consistency"
         losses, clip_losses, vf_losses, ent_losses = [], [], [], []
         first = True

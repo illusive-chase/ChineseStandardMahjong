@@ -195,7 +195,7 @@ class TorchWorker(threading.Thread):
                 state, mask = self.buffer.get_state(i)
                 if state is not None:
                     mask = mask.reshape(-1, 235)
-                    state = state.reshape(-1, 145, 4, 9)
+                    state = state.reshape(-1, 161, 4, 9)
                     state_batch.append(state)
                     mask_batch.append(mask)
                     idx_batch.append((i, action_idx, action_idx + mask.shape[0]))

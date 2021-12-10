@@ -20,13 +20,13 @@ assert END == 235
 
 class VecData:
 
-    state_shape = (4, 145, 36)
+    state_shape = (4, 145+12+4, 36)
     action_shape = (4, END)
     action_augment_table = None
     tile_augment_table = None
 
     def __init__(self, quan, no_obs_players=[]):
-        self.obs = np.zeros(self.state_shape, dtype=np.bool)
+        self.obs = np.zeros((4, 145+12+4, 36), dtype=np.bool)
         self.str2tile = str2tile
         self.tile2str = tile2str
         self.mask = np.zeros(self.action_shape, dtype=np.bool)
@@ -167,6 +167,8 @@ class VecData:
         chi_pack = self.obs[:, 8:24, :].reshape(4, 4, 4 * 36)
         peng_pack = self.obs[:, 24:28, :].reshape(4, 4, 36)
         gang_pack = self.obs[:, 28:32, :].reshape(4, 4, 36)
+        self_hand = self.obs[:, 4:8, :].reshape(4, 4 * 36)
+        other_hand = self.obs[:, 145:145+12, :].reshape(4, 3, 4 * 36)
 
         for a in idxs:
             if a != 0:
@@ -182,6 +184,10 @@ class VecData:
             gang_pack[a, 1] = gang_pack[(a + 1) % 4, 0]
             gang_pack[a, 2] = gang_pack[(a + 2) % 4, 0]
             gang_pack[a, 3] = gang_pack[(a + 3) % 4, 0]
+            other_hand[a, 0] = self_hand[(a + 1) % 4]
+            other_hand[a, 1] = self_hand[(a + 2) % 4]
+            other_hand[a, 2] = self_hand[(a + 3) % 4]
+
 
     def show(self, tile_str, num):
         tile_t = str2tile[tile_str]
