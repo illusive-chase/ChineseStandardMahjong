@@ -7,7 +7,7 @@ from utils.vec_data import VecData
 import numpy as np
 import gym
 from copy import deepcopy
-
+import random
 
 def visualize(tile):
     mode = '\033[1;{};40m'.format({
@@ -60,9 +60,7 @@ class Runner(gym.Env):
         self.action_space = gym.spaces.Discrete(self.action_shape[1])
         self.eval = eval
         self.tileWallDummy = None
-        self.randSeed = seed
-        if seed is not None:
-            self.seed(seed)
+        self.seed(seed)
         # self.no_need_other_obs = type(other_policy) is imitation_policy
         self.no_need_other_obs = False
 
@@ -104,8 +102,8 @@ class Runner(gym.Env):
 
         if init_data is None:
             not_reset = self.tileWallDummy is not None
-            self.quan = self.quan if not_reset else np.random.randint(0, 3)
-            self.id = (self.id + 1) % 4 if not_reset else np.random.randint(0, 3)
+            self.quan = self.quan if not_reset else self.rand.randint(0, 3)
+            self.id = (self.id + 1) % 4 if not_reset else self.rand.randint(0, 3)
             self.other = [i for i in range(4) if i != self.id]
             self.tileWall = []
             for k in "WBT":
@@ -119,7 +117,7 @@ class Runner(gym.Env):
                 for j in range(4):
                     self.tileWall.append("J" + str(i))
             
-            np.random.shuffle(self.tileWall)
+            self.rand.shuffle(self.tileWall)
             if self.eval:
                 if not_reset:
                     self.tileWall = deepcopy(self.tileWallDummy)
@@ -553,4 +551,4 @@ class Runner(gym.Env):
 
     def seed(self, randSeed):
         self.randSeed = randSeed
-        np.random.seed(randSeed)
+        self.rand = random.Random(randSeed)

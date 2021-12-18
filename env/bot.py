@@ -65,7 +65,7 @@ class Bot:
         partLength = 136 // 4
         for i in range(4):
             for j in range(partLength):
-                self.playerData[i].pTileWall.append('??')
+                self.playerData[i].add_to_wall('??')
 
         for response, request in zip(responses, requests):
             inferred_response = self.infer_response(request)
@@ -322,7 +322,7 @@ class Bot:
                 for j in self.other:
                     nextTile = self.playerData[j].get_from_wall()
                     self.playerData[j].draw(nextTile)
-                self.playerData[self.id].pTileWall.pop(-1)
+                self.playerData[self.id].get_from_wall()
                 self.playerData[self.id].draw(request[5 + i])
             self.playerData[0].flower = request[18:18+hua[0]]
             self.playerData[1].flower = request[18+hua[0]:18+hua[1]]

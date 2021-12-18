@@ -30,10 +30,13 @@ class wrapper_policy(nn.Module):
         obs = torch.from_numpy(obs[0]).to(self.device).float().view(-1, 161, 4, 9)[:, :145, :, :]
         with torch.no_grad():
             logits = self.network(obs)
-        logits = logits + (logits.min() - logits.max() - 20) * ~mask
+        logits = logits + (logits.min() - logits.max() - 40) * ~mask
         if self.deterministic:
             action = torch.argmax(logits, dim=-1)
         else:
             dist = torch.distributions.Categorical(logits=logits)
-            action = dist.sample()
+            while True:
+                action = dist.sample()
+                if (dist.log_prob(action).exp() > 1e-10).all():
+                    break
         return action.view(*shape).cpu().numpy() if is_batch else action[0].cpu().numpy()

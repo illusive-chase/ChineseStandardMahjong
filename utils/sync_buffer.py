@@ -148,6 +148,8 @@ class SyncBuffer:
         if self.max_len is not None:
             self.keep = self.traj[:max_len]
 
+        assert mask_batch.any(1).all()
+
         return {
             'obs': state_batch,
             'obs_next': next_state_batch,

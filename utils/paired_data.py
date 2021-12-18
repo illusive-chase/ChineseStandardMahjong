@@ -171,10 +171,14 @@ class PairedDataset:
     def augment(self, item, aug_type):
         ret = np.empty_like(item)
         ret[0] = self.action_augment_table[aug_type, item[0] + 1] - 1
-        ret[1:49] = self.tile_augment_table[aug_type, item[1:49]]
+        tile_count_idx = self.tile_augment_table[aug_type, 1:] - 1
+        ret[1:35] = ret[1:35][tile_count_idx]
+        ret[35:49] = self.tile_augment_table[aug_type, item[35:49]]
         ret[49:177] = (item[49:177] // 64) * 64 + self.tile_augment_table[aug_type, item[49:177] % 64]
         ret[177:215] = self.action_augment_table[aug_type, item[177:215]]
         ret[215] = item[215]
+        if aug_type == 0:
+            assert (ret == item).all()
         return ret
         
 
@@ -184,10 +188,10 @@ class PairedDataset:
         self.full = None
         self._indices = None
 
-    def sample(self, batch_size):
+    def sample(self, batch_size, shuffle=True):
         if batch_size == 0:
             if self.full is None:
-                self.full = self.sample(self.actual_size * self.augmentation)
+                self.full = self.sample(self.actual_size * self.augmentation, shuffle=shuffle)
             return self.full
         obs = np.zeros((batch_size, 145, 36), dtype=np.bool)
         mask = np.zeros((batch_size, 235), dtype=np.bool)
@@ -195,7 +199,8 @@ class PairedDataset:
         rew = np.zeros((batch_size, 1), dtype=np.uint8)
         if self._indices is None or self._indices.shape[0] < batch_size:
             self._indices = np.arange(self.actual_size * self.augmentation)
-            np.random.shuffle(self._indices)
+            if shuffle:
+                np.random.shuffle(self._indices)
         indices = self._indices[:batch_size]
         self._indices = self._indices[batch_size:]
         for idx, indice in enumerate(indices):

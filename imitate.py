@@ -29,6 +29,35 @@ def evaluate(args):
         time.sleep(0.5)
     env.render()
 
+def evaluate_critic(args):
+    torch.manual_seed(args.seed)
+    torch.set_num_threads(1)
+    device = torch.device('cpu') if args.cuda < 0 else torch.device(f'cuda:{args.cuda}')
+    critic = wrapper_policy(eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout, shape=(145, 5))).to(device)
+    critic.load(f'./{args.log_dir}/{args.exp_name}/policy.pth')
+    critic.eval()
+    network = resnet18(use_bn=True)
+    policy = wrapper_policy(network).to(device)
+    policy.load('data/best.pth')
+    policy.eval()
+
+    env = REnv(other_policy=policy, seed=args.seed, verbose=True)
+    obs = env.reset()
+    done = False
+    while not done:
+        obs, rew, done, info = env.step(policy(obs))
+        # print(obs[0].reshape(-1, 161, 36)[:, 0:4, :].sum())
+        logits = critic.network(torch.from_numpy(obs[0]).to(device).view(-1, 161, 4, 9)[:, :145, :, :].float()).view(5)
+        probs = logits.softmax(dim=0) * 100
+        env.render()
+        print(f'[-8<]   : {probs[0].item():.1f}%')
+        print(f'[-8]    : {probs[1].item():.1f}%')
+        print(f'[0]     : {probs[2].item():.1f}%')
+        print(f'[32-49] : {probs[3].item():.1f}%')
+        print(f'[50>]   : {probs[4].item():.1f}%')
+        time.sleep(0.5)
+    env.render()
+
 
 def train(args):
     torch.manual_seed(args.seed)
@@ -39,10 +68,10 @@ def train(args):
         dataset.load(f)
     train_set, val_set = dataset.split(0.001)
     val_set.augmentation = 1
-    network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
+    network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout, shape=(145, (5 if args.mode == 'v' else 235)))
     # network = Slider()
     policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay, mode=args.mode).to(device)
-    # policy = tianshou_imitation_policy(torch.nn.DataParallel(network, device_ids=[0, 1, 2, 3]), lr=args.learning_rate, weight_decay=args.weight_decay, mode=args.mode).to(device)
+    policy = tianshou_imitation_policy(torch.nn.DataParallel(network, device_ids=[5, 6, 7, 8, 9]), lr=args.learning_rate, weight_decay=args.weight_decay, mode=args.mode).to(device)
     if args.path != '':
         policy.load(args.path)
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')

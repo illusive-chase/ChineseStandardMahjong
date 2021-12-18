@@ -13,8 +13,8 @@ sleep_slot_time = 0.0005
 
 
 class WrappedTrainRunner(Runner):
-    def __init__(self):
-        super().__init__(other_policy=None, verbose=False, seed=None, eval=False)
+    def __init__(self, seed=1):
+        super().__init__(other_policy=None, verbose=False, seed=seed, eval=False)
 
     def reset(self):
         state = super().reset()
@@ -57,8 +57,8 @@ class WrappedTrainRunner(Runner):
             return (state, None), 0.0, np.asarray(False), {}
 
 class WrappedEvalRunner(Runner):
-    def __init__(self):
-        super().__init__(other_policy=None, verbose=False, seed=None, eval=True)
+    def __init__(self, seed=1):
+        super().__init__(other_policy=None, verbose=False, seed=seed, eval=True)
         self.rews = np.zeros(4)
         self.game_id = 0
         self.scores = []
@@ -119,7 +119,7 @@ class WrappedEvalRunner(Runner):
 
 
 class EnvWorker(threading.Thread):
-    def __init__(self, buffer, other_buffer, max_env_num, eval):
+    def __init__(self, buffer, other_buffer, max_env_num, eval, varity=2147483647):
         super().__init__()
         self.buffer = buffer
         self.other_buffer = other_buffer
@@ -127,6 +127,9 @@ class EnvWorker(threading.Thread):
         self.env_constructor = WrappedTrainRunner if not eval else WrappedEvalRunner
         self.envs = []
         self.workload = (0, 0)
+        self.varity = varity
+        if type(self.varity) is int:
+            self.varity = [0, self.varity]
 
     def run(self):
         while True:
@@ -153,7 +156,7 @@ class EnvWorker(threading.Thread):
                 self.workload = (self.workload[0] + worked, self.workload[1] + 1)
                 continue
             if len(self.envs) < self.max_env_num:
-                env = self.env_constructor()
+                env = self.env_constructor(seed=np.random.randint(*self.varity))
                 init_state, other_init_state = env.reset()
                 idx1 = self.buffer.register(init_state)
                 if idx1 is None:
@@ -237,7 +240,7 @@ class MultiRunner:
         assert (max_step is None) != (max_eps is None)
 
 
-    def collect(self, eval=False, verbose=False):
+    def collect(self, eval=False, verbose=False, varity=2147483647):
         self.buffer.reset()
         self.other_buffer.reset()
 
@@ -248,7 +251,7 @@ class MultiRunner:
             TorchWorker(self.other_policy, self.other_buffer, self.other_torch_lock, self.max_batch_size // 3)
             for _ in range((self.n_torch_parallel + 1) // 2)
         ]
-        self.env_workers = [EnvWorker(self.buffer, self.other_buffer, self.max_env_num, eval) for _ in range(self.n_env_parallel)]
+        self.env_workers = [EnvWorker(self.buffer, self.other_buffer, self.max_env_num, eval, varity) for _ in range(self.n_env_parallel)]
 
         start = time()
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__all__ = ('resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152', 'Slider')
+__all__ = ('resnet16', 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152', 'Slider')
 
 import numpy as np
 import torch
@@ -145,6 +145,63 @@ class ResNet(nn.Module):
         output = self.dropout(output)
         output = self.fc(output)
         return output
+
+class SimpleResNet(nn.Module):
+
+    def __init__(self, block, num_block, num_input_channels, num_classes, use_bn, dropout):
+        super().__init__()
+
+        self.in_channels = 64
+
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(num_input_channels, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        ) if use_bn else nn.Sequential(
+            nn.Conv2d(num_input_channels, 64, kernel_size=3, padding=1, bias=True),
+            nn.ReLU(inplace=True)
+        )
+        #we use a different inputsize than the original paper
+        #so conv2_x's stride is 1
+        self.conv2_x = self._make_layer(block, 64, num_block, 1, use_bn)
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(64 * 36 * block.expansion, num_classes)
+
+    def _make_layer(self, block, out_channels, num_blocks, stride, use_bn):
+        """make resnet layers(by layer i didnt mean this 'layer' was the
+        same as a neuron netowork layer, ex. conv layer), one layer may
+        contain more than one residual block
+        Args:
+            block: block type, basic block or bottle neck block
+            out_channels: output depth channel number of this layer
+            num_blocks: how many blocks per layer
+            stride: the stride of the first block of this layer
+        Return:
+            return a resnet layer
+        """
+
+        # we have num_block blocks per layer, the first block
+        # could be 1 or 2, other blocks would always be 1
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_channels, out_channels, stride, use_bn))
+            self.in_channels = out_channels * block.expansion
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        output = self.conv1(x)
+        output = self.conv2_x(output)
+        output = output.view(output.size(0), -1)
+        output = self.dropout(output)
+        output = self.fc(output)
+        return output
+
+
+def resnet16(use_bn, dropout=0.5, shape=(145, 235)):
+    return SimpleResNet(BasicBlock, 7, num_input_channels=shape[0], num_classes=shape[1], use_bn=use_bn, dropout=dropout)
+
 
 def resnet18(use_bn, dropout=0.5, shape=(145, 235)):
     """ return a ResNet 18 object

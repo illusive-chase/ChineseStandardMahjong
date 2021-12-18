@@ -66,7 +66,7 @@ class PlayerData:
 
     def get_from_wall(self):
         tile_str = self.pTileWall.pop(-1)
-        if (not self.pseudo) and self.sync:
+        if (not self.pseudo) and self.sync and tile_str != '??':
             tile_t = self.str2tile[tile_str]
             self.__fwall[tile_t] -= 1
             self.__wall[self.__fwall[tile_t], tile_t] = 0
@@ -74,7 +74,7 @@ class PlayerData:
 
     def add_to_wall(self, tile_str):
         self.pTileWall.append(tile_str)
-        if (not self.pseudo) and self.sync:
+        if (not self.pseudo) and self.sync and tile_str != '??':
             tile_t = self.str2tile[tile_str]
             self.__wall[self.__fwall[tile_t], tile_t] = 1
             self.__fwall[tile_t] += 1
