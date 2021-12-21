@@ -151,19 +151,19 @@ class SimpleResNet(nn.Module):
     def __init__(self, block, num_block, num_input_channels, num_classes, use_bn, dropout):
         super().__init__()
 
-        self.in_channels = 64
+        self.in_channels = 512
 
         self.conv1 = nn.Sequential(
-            nn.Conv2d(num_input_channels, 64, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(num_input_channels, 512, kernel_size=1, padding=0, bias=False),
+            nn.BatchNorm2d(512),
             nn.ReLU(inplace=True)
         ) if use_bn else nn.Sequential(
-            nn.Conv2d(num_input_channels, 64, kernel_size=3, padding=1, bias=True),
+            nn.Conv2d(num_input_channels, 512, kernel_size=1, padding=0, bias=True),
             nn.ReLU(inplace=True)
         )
         #we use a different inputsize than the original paper
         #so conv2_x's stride is 1
-        self.conv2_x = self._make_layer(block, 64, num_block, 1, use_bn)
+        self.conv2_x = self._make_layer(block, 512, num_block, 1, use_bn)
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(64 * 36 * block.expansion, num_classes)
 

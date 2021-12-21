@@ -221,7 +221,7 @@ def train(args, target_policy, seed_range):
         other_policy,
         target_policy,
         dataset,
-        repeat=10,
+        repeat=20,
         batch_size=args.batch_size,
         seed_range=seed_range
     )

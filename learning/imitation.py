@@ -22,6 +22,7 @@ class tianshou_imitation_policy(nn.Module):
         self.device = 'cpu'
         weight_decay_list = (param for name, param in network.named_parameters() if name[-4:] != 'bias' and "bn" not in name)
         no_decay_list = (param for name, param in network.named_parameters() if name[-4:] == 'bias' or "bn" in name)
+        assert no_decay_list
         parameters = [{'params': weight_decay_list},
                       {'params': no_decay_list, 'weight_decay': 0.}]
         self.optim = torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay)

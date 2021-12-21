@@ -71,7 +71,7 @@ def train(args):
     network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout, shape=(145, (5 if args.mode == 'v' else 235)))
     # network = Slider()
     policy = tianshou_imitation_policy(network, lr=args.learning_rate, weight_decay=args.weight_decay, mode=args.mode).to(device)
-    policy = tianshou_imitation_policy(torch.nn.DataParallel(network, device_ids=[5, 6, 7, 8, 9]), lr=args.learning_rate, weight_decay=args.weight_decay, mode=args.mode).to(device)
+    # policy = tianshou_imitation_policy(torch.nn.DataParallel(network, device_ids=[5, 6, 7, 8, 9]), lr=args.learning_rate, weight_decay=args.weight_decay, mode=args.mode).to(device)
     if args.path != '':
         policy.load(args.path)
     writer = SummaryWriter(f'./{args.log_dir}/{args.exp_name}')
