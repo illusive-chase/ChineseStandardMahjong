@@ -27,12 +27,12 @@ def train(args):
     sample_device = torch.device('cpu') if args.sample_cuda < 0 else torch.device(f'cuda:{args.sample_cuda}')
     update_device = torch.device('cpu') if args.update_cuda < 0 else torch.device(f'cuda:{args.update_cuda}')
 
-    network = resnet18(use_bn=True, dropout=args.dropout).to(update_device)
+    network = resnet18(use_bn=(not args.no_batch_norm), dropout=args.dropout).to(update_device)
     critic = resnet18(use_bn=False, dropout=args.dropout, shape=(161, 1)).to(update_device)
 
     param_set = set(network.parameters())
-    bn_set = set(sum([list(m.parameters()) for m in network.modules() if isinstance(m, torch.nn.BatchNorm2d)], []))
-    assert len(bn_set) == len(param_set & bn_set) and len(bn_set) > 0
+    # bn_set = set(sum([list(m.parameters()) for m in network.modules() if isinstance(m, torch.nn.BatchNorm2d)], []))
+    # assert len(bn_set) == len(param_set & bn_set) and len(bn_set) > 0
     # optim = torch.optim.Adam(param_set - bn_set, lr=args.learning_rate)
     optim = torch.optim.Adam(param_set, lr=args.learning_rate)
 
@@ -48,10 +48,10 @@ def train(args):
         optim,
         critic_optim,
         lambda x:dist(logits=x),
-        discount_factor=0.95,
+        discount_factor=0.98,
         max_grad_norm=0.5,
         vf_coef=0.5,
-        ent_coef=1e-4,
+        ent_coef=1e-5,
         gae_lambda=0.95,
         max_batchsize=args.batch_size
     ).to(update_device)
@@ -63,7 +63,7 @@ def train(args):
             if m.bias is not None:
                 torch.nn.init.zeros_(m.bias)
 
-    other_policy = wrapper_policy(resnet18(use_bn=True, dropout=args.dropout)).to(sample_device)
+    other_policy = wrapper_policy(resnet18(use_bn=(not args.no_batch_norm), dropout=args.dropout), deterministic=False).to(sample_device)
     if args.path:
         policy.load(args.path)
     if args.compare_path:
@@ -78,15 +78,15 @@ def train(args):
         policy,
         other_policy,
         max_epoch=args.num_epoch,
-        collect_per_epoch=5,
+        collect_per_epoch=1,
         test_eps_per_epoch=100,
         step_per_collect=args.batch_size * 5,
-        repeat_per_collect=3,
+        repeat_per_collect=2,
         batch_size=args.batch_size,
         verbose=not args.quiet,
         logger=logger,
         save_fn=lambda p: torch.save(p.state_dict(), f'./{args.log_dir}/{args.exp_name}/policy.pth'),
-        force_to_save=True
+        force_to_save=False
     )
 
 
@@ -110,5 +110,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     assert args.resnet == 18
     assert not args.eval
-    assert not args.no_batch_norm
     train(args)

@@ -16,7 +16,7 @@ class wrapper_policy(nn.Module):
 
     def load(self, path):
         state_dict = torch.load(path, map_location=self.device)
-        self.load_state_dict({k.replace('module.', ''):v for k, v in state_dict.items()})
+        self.load_state_dict({k.replace('module.', '').replace('_actor_critic.actor.', 'actor.'):v for k, v in state_dict.items()}, strict=False)
 
     def to(self, device):
         self.device = device

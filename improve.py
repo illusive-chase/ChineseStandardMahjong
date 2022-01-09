@@ -208,7 +208,8 @@ def train(args, target_policy, seed_range):
     policy = deepcopy(target_policy).to(device)
     other = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
     other_policy = wrapper_policy(other).to(device)
-    other_policy.load(args.compare_path)
+    if args.compare_path:
+        other_policy.load(args.compare_path)
     other_policy.eval()
     print('opponent load @', args.compare_path)
 
@@ -232,11 +233,13 @@ def collect(args, device_idx, seed_range):
     network = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
     other = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
     policy = wrapper_policy(network, deterministic=False).to(device)
-    policy.load(args.path)
+    if args.path:
+        policy.load(args.path)
     policy.eval()
 
     other_policy = wrapper_policy(other).to(device)
-    other_policy.load(args.compare_path)
+    if args.compare_path:
+        other_policy.load(args.compare_path)
     other_policy.eval()
 
     print('policy load @', args.path)
@@ -310,10 +313,12 @@ if __name__ == "__main__":
             while True:
                 device = torch.device('cpu') if not args.cuda else torch.device(f'cuda:{args.cuda[0]}')
                 target_policy = wrapper_policy(eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)).to(device)
-                target_policy.load(args.path)
+                if args.path:
+                    target_policy.load(args.path)
                 other = eval(f'resnet{args.resnet}')(use_bn=args.batch_norm, dropout=args.dropout)
                 other_policy = wrapper_policy(other).to(device)
-                other_policy.load(args.compare_path)
+                if args.compare_path:
+                    other_policy.load(args.compare_path)
 
                 try:
                     optimizer = torch.optim.Adam()

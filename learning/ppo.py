@@ -44,8 +44,8 @@ class PPOPolicy(A2CPolicy):
 
     def load(self, path):
         state_dict = torch.load(path, map_location=self.device)
-        state_dict = {k.replace('network.', 'actor.'):v for k, v in state_dict.items()}
-        self.load_state_dict(state_dict, strict=False)
+        state_dict = {k.replace('network.module.', ''):v for k, v in state_dict.items()}
+        self.actor.load_state_dict(state_dict)
 
     def process_fn(
         self, batch: Batch, buffer: ReplayBuffer, indices: np.ndarray
@@ -54,7 +54,7 @@ class PPOPolicy(A2CPolicy):
             # buffer input `buffer` and `indices` to be used in `learn()`.
             self._buffer, self._indices = buffer, indices
         batch = Batch(batch)
-        batch.rew[batch.done] = np.sign(batch.rew[batch.done] + 8)
+        # batch.rew[batch.done] = np.sign(batch.rew[batch.done] + 8)
         batch.obs = to_torch(batch.obs, device=self.device).float()
         batch.mask = to_torch(batch.mask, device=self.device)
         batch.obs_next = to_torch(batch.obs_next, device=self.device).float()
@@ -108,6 +108,7 @@ class PPOPolicy(A2CPolicy):
                 assert not first or (ratio == 1).all()
                 first = False
                 ratio = ratio.reshape(ratio.size(0), -1).transpose(0, 1)
+                cr = ((ratio < 1.2) & (ratio > 0.8)).float().mean()
                 surr1 = ratio * b.adv
                 surr2 = ratio.clamp(1.0 - self._eps_clip, 1.0 + self._eps_clip) * b.adv
                 if self._dual_clip:
@@ -145,6 +146,7 @@ class PPOPolicy(A2CPolicy):
                 vf_losses.append(vf_loss.item())
                 ent_losses.append(ent_loss.item())
                 losses.append(loss.item())
+                print('clip/vf/ent/cr: {:.5f}/{:.3f}/{:.3f}/{:.3f}'.format(clip_loss.item(), vf_loss.item(), ent_loss.item(), cr.item()))
         # update learning rate if lr_scheduler is given
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
